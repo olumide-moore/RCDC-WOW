@@ -228,6 +228,425 @@ def refreshMainWindow():
 #     timelist.append(curtime)
 #     # print(timelist) 
 
+class Admin_Dialog(QDialog):
+    def __init__(self, projectindex):
+        try:
+            super(Admin_Dialog, self).__init__()
+            self.this_projectindex=projectindex
+            project= projectsTable.item(projectindex,projectsTable.columnLabels.index("Project")).text()
+            self.this_projectfoldername=project
+            self.this_projectno=project.split(" - ")[0]    
+            self.this_projectname=project.split(" - ")[1]
+            self.this_projectclient=projectsTable.item(projectindex,projectsTable.columnLabels.index("Client")).text()
+            self.this_projectstatus=projectsTable.item(projectindex,projectsTable.columnLabels.index("Status")).text()
+            self.this_projectarchitect=projectsTable.item(projectindex,projectsTable.columnLabels.index("Architect")).text()
+            self.this_projectlead=projectsTable.item(projectindex,projectsTable.columnLabels.index("Project Lead")).text()
+            self.this_projectteam=projectsTable.item(projectindex,projectsTable.columnLabels.index("Team")).text()
+            self.this_project3lettercode= project3name_dict[project]
+            self.this_projectstage=RIBAstages[project]
+            self.setMaximumSize(500,600)
+            # global admindialog
+            # self.resize(360,400)
+            # self.setStyleSheet("QDialog{background : white;}QGroupBox{background : white;}")
+          
+          #Create a label to drop the logo for the project
+            self.DropLogolabel=QLabel("\nDrop logo here\n OR\n Browse files to select logo\n")
+            self.DropLogolabel.setAlignment(Qt.AlignCenter)
+            self.DropLogolabel.setStyleSheet('''
+                QLabel{
+                font:20px; border: 4px dashed #aaa
+                }
+            ''')
+            self.DropLogolabel.setAcceptDrops(True)#Enable drops onto the label
+            self.DropLogolabel.installEventFilter(self)
+            # self.DropLogolabel.mouseDoubleClickEvent
+            self.infoLabel= QLabel("To change logo double click on the logo",self)
+            self.infoLabel.setStyleSheet("QLabel{font:12px; color:red;}")
+            self.infoLabel.hide()
+
+          #Create a list widget and populate all existing clients logos 
+            self.LogosList= QListWidget()
+            self.LogosList.setViewMode(QListView.IconMode)
+            self.LogosList.setIconSize(QSize(80,80))
+            self.LogosList.itemDoubleClicked.connect(self.imgdblClicked)
+            self.BrowseButton=QPushButton("Browse Files")
+            self.BrowseButton.clicked.connect(self.BrowseButtonClicked)
+            self.LogosLayout= QVBoxLayout()
+            self.LogosLayout.addWidget(self.LogosList)
+            self.LogosLayout.addWidget(self.BrowseButton)
+            self.LogosLayout.setSpacing(5)
+
+            if path.exists(ClientsLogos):#The ClientsLogos is a path to where the logos are stored, it is set at the bottom of the page under the if__name__==__main__ statement
+                for file in listdir(ClientsLogos):  # For all img files in the directory
+                    if file.endswith(".png") or file.endswith(".jfif") or file.endswith(".jpg") or file.endswith("jpeg"):
+                        if file.rsplit('.',1)[0]==self.this_projectclient:# If file name = this project name
+                            self.DropLogolabel.setPixmap(QPixmap(path.join(ClientsLogos, file)).scaled(200,200))#Put image in logo label
+                            self.DropLogolabel.setToolTip(path.join(ClientsLogos, file)) # Set the label tool tip to image fullpath
+                            self.LogosList.hide()#Hide logos  list since this project has a set logo
+                            self.BrowseButton.hide()
+                            self.infoLabel.show()
+                        item= QListWidgetItem()
+                        icon = QIcon()
+                        icon.addPixmap(QPixmap(path.join(ClientsLogos, file)), QIcon.Normal, QIcon.Off)
+                        item.setIcon(icon)
+                        item.setToolTip(path.join(ClientsLogos, file))
+
+                        self.LogosList.addItem(item)#Add all images in folder to the logos list
+                # item= QListWidgetItem()
+                # icon = QIcon()
+                # icon.addPixmap(QPixmap(new_icon), QIcon.Normal, QIcon.Off)
+                # item.setIcon(icon)
+                # self.LogosList.addItem(item)
+            else:
+                self.LogosList.addItem("Path '" +ClientsLogos + "' not found")
+
+          #Create labels and input boxes
+            self.projectNameEdit= QLineEdit()
+            self.projectNameEdit.setText(self.this_projectname)
+            self.projectNameEdit.setEnabled(False)
+            
+            self.Letter3CodeEdit= QLineEdit()
+            self.Letter3CodeEdit.setMaxLength(3)
+            # if self.sheet_name['A'+str(self.row)].value != None:
+            self.Letter3CodeEdit.setText(self.this_project3lettercode)
+            self.Letter3CodeEdit.setEnabled(False)
+
+            self.projectNoEdit= QLineEdit()
+            self.projectNoEdit.setText(self.this_projectno)
+            self.projectNoEdit.setEnabled(False)
+
+            self.projectClientBox=  QComboBox()
+            self.projectClientBox.addItems(clients) #clients is a list which has been populated from the init window
+            self.projectClientBox.setEditable(True)
+            self.projectClientBox.setCurrentText(self.this_projectclient)# if ThisProject_client != '' else self.projectClientBox.setCurrentText('xxxx')
+            self.projectClientBox.setEnabled(False)#disable the box until you click the edit button
+
+            self.projectArchitectBox= QComboBox()
+            self.projectArchitectBox.addItems(architects)
+            self.projectArchitectBox.setEditable(True)
+            self.projectArchitectBox.setCurrentText(self.this_projectarchitect) if self.this_projectarchitect != '' else self.projectArchitectBox.setCurrentText('')
+            self.projectArchitectBox.setEnabled(False)
+
+            # self.projectLocation =  QLabel('Location:',self)
+            # self.projectLocationEdit=QLineEdit(self)
+
+            self.projectStatusBox=  QComboBox()
+            self.projectStatusBox.addItem("Bid")
+            self.projectStatusBox.addItem("Live")
+            self.projectStatusBox.addItem("Paused")
+            self.projectStatusBox.addItem("Closed")
+            self.projectStatusBox.setEditable(True)
+            self.projectStatusBox.setCurrentText(self.this_projectstatus)
+
+            self.projectStageBox=  QComboBox()
+            self.projectStageBox.addItems(["XX","01","02","03","04","05","06","07","None"])
+            self.projectStageBox.setEditable(True)
+            self.projectStageBox.setCurrentText(self.this_projectstage)
+
+            self.projectLeadBox= QComboBox()
+            # self.projectLeadBox.addItem("None")
+            self.projectLeadBox.addItems(RCDC_employees)
+            self.projectLeadBox.setEditable(True)
+            self.projectLeadBox.setCurrentText(self.this_projectlead)
+
+            count=1
+            self.projectTeamBox= CheckableComboBox()
+            self.projectTeamBox.addItem("")
+            for employee in RCDC_employees:
+                self.projectTeamBox.addItem(employee)
+                self.projectTeamBox.model().item(count).setCheckState(Qt.Unchecked)
+                count+=1
+
+            # self.projectStatusBox.setEnabled(False)
+
+            # self.projectSector= QLabel('Sector:',self)
+            # self.projectSectorBox= QComboBox(self)
+
+            # self.projectValue= QLabel('Project Value:', self)
+            # self.projectValueBox=QDoubleSpinBox()
+            # self.projectValueBox.setPrefix('£')
+            # self.projectValueBox.setMaximum(1000000000000)
+            
+            # self.projectFees= QLabel('Fees:', self)
+            # self.projectFeesBox=QDoubleSpinBox()
+            # self.projectFeesBox.setPrefix('£')
+            # self.projectFeesBox.setMaximum(1000000000000)
+
+          #Layout
+            self.form= QFormLayout()
+            self.form.addRow(self.DropLogolabel)
+            self.form.addRow(self.infoLabel)
+            self.form.addRow(self.LogosLayout)
+            # self.form.addRow(self.BrowseButton)
+            self.form.addRow("Project Name", self.projectNameEdit)
+            self.form.addRow("3 Letter Code", self.Letter3CodeEdit)
+            self.form.addRow(("Project No"),self.projectNoEdit)
+            self.form.addRow("Client", self.projectClientBox)
+            self.form.addRow("Architects",self.projectArchitectBox)
+
+            
+            # self.form.addRow(self.projectLocation, self.projectLocationEdit)
+            self.form.addRow("Status", self.projectStatusBox)
+            self.form.addRow("Stage", self.projectStageBox)
+            self.form.addRow("Project Lead", self.projectLeadBox)
+            self.form.addRow("Team", self.projectTeamBox)
+            # self.form.addRow(self.projectSector, self.projectSectorBox)
+            # self.form.addRow(self.projectValue, self.projectValueBox)
+            # self.form.addRow(self.projectFees, self.projectFeesBox)
+            self.form.setVerticalSpacing(15)
+            self.form.setHorizontalSpacing(30)
+            self.formGroupBox = QGroupBox()
+            self.formGroupBox.setLayout(self.form) 
+            
+            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttonBox.accepted.connect(self.funcOK)
+            buttonBox.rejected.connect(self.reject)   
+            
+            mainLayout = QVBoxLayout()
+            mainLayout.addWidget(self.formGroupBox)
+            mainLayout.addWidget(buttonBox)
+            # self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            self.setLayout(mainLayout)
+            self.setWindowTitle("Admin")
+            self.LogosList.installEventFilter(self)
+            self.installEventFilter(self)
+            QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.LogosList))
+        
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            self.close()
+    
+    def BrowseButtonClicked(self):
+        try:
+            if self.projectClientBox.currentText()!="":
+                root= Tk()
+                root.withdraw()
+                filepath=filedialog.askopenfilename(title='Select Client logo', filetypes=[("image ([png,jfif,jpg,jpeg])", ".png"),("image ([png,jfif,jpg,jpeg])", ".jfif"),("image ([png,jfif,jpg,jpeg])", ".jpg"),("image ([png,jfif,jpg,jpeg])", ".jpeg")])
+                if filepath!='':
+                    if filepath.endswith(".png") or filepath.endswith(".jfif") or filepath.endswith(".jpg") or filepath.endswith("jpeg"):
+                        for file in listdir(ClientsLogos):  # For all img files in the directory
+                            if file.rsplit('.',1)[0]==self.this_projectclient :
+                                qm = QMessageBox
+                                ret = qm.question(self,'RCDC', "Logo already exists for this client. \n Would you like to replace logo", qm.Yes | qm.No )
+                                if ret == qm.Yes:
+                                    for i in listdir(ClientsLogos):
+                                        if i.rsplit('.',1)[0]==self.this_projectclient:
+                                            remove(ClientsLogos+'\\'+ i)
+                                elif ret== qm.No:
+                                    break
+                        else:
+                            #Copy file to Client logos and set name as client
+                            copyfile(r''+filepath, ClientsLogos + '\\' + self.this_projectclient + '.' + filepath.rsplit('.',1)[1])
+                            self.close()
+                            self.__init__()
+                            msg= TimerMsgBox("Logo updated        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon, timeout=1)    
+                            msg.exec()
+                            self.exec()
+                            
+                    else:
+                        MsgBox("Only files with image formats allowed (ico/png/jfif/jpg/jpeg)", setWindowTitle="Invalid format", setIcon = QMessageBox.Critical)
+                # print(filepath)
+            else:
+                MsgBox("To set logo, this project client must be set", setWindowTitle="Client unknown", setIcon = QMessageBox.Information)
+
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def imgdblClicked(self, index):
+        try:
+            if self.projectClientBox.currentText()!="":
+                for file in listdir(ClientsLogos):  # For all img files in the directory
+                    if file.rsplit('.',1)[0]==self.this_projectclient :
+                        qm = QMessageBox
+                        ret = qm.question(self,'RCDC', "Logo already exists for this client. \n Would you like to replace logo", qm.Yes | qm.No )
+                        if ret == qm.Yes:
+                            for i in listdir(ClientsLogos):
+                                if i.rsplit('.',1)[0]==self.this_projectclient:
+                                    remove(ClientsLogos+'\\'+ i)
+                        elif ret== qm.No:
+                            break
+                else:
+                    #Copy file to Client logos and set name as client
+                    copyfile(r''+index.toolTip(), ClientsLogos + '\\' + self.this_projectclient + '.' + index.toolTip().rsplit('.',1)[1])
+                    self.close()
+                    self.__init__()
+                    msg= TimerMsgBox("Logo updated        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon, timeout=1)    
+                    msg.exec()
+                    self.exec()
+            else:
+                MsgBox("To set logo, this project client must be set", setWindowTitle="Client unknown", setIcon = QMessageBox.Information)
+
+                
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def closeEvent(self,event): #Added to clear event because of question mark button weirdness
+        try:
+            self.removeEventFilter(self)
+            super(Admin_Dialog,self).closeEvent(event)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def eventFilter(self, source, event):
+        try:
+            if event.type() == QEvent.EnterWhatsThisMode:
+                QWhatsThis.leaveWhatsThisMode()
+                with open(help_json, 'r') as f:
+                    self.data=json_load(f)
+                # event.ignore()
+                MsgBox(self.data["Admin"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
+                return True
+            #if you right click on a logo, show option -- Delete
+            if event.type() == QEvent.ContextMenu and source ==self.LogosList:
+                if len(source.selectionModel().selectedRows())==1 and source.item([i.row() for i in source.selectionModel().selectedRows()][0]).toolTip()!='':
+                    self.menu = QMenu()
+                    deleteAction = QAction('Delete')
+                    self.menu.addAction(deleteAction)
+                    deleteAction.triggered.connect(lambda: self.delete(source))
+                    self.menu.exec_(event.globalPos())
+                    return True
+
+            if source==self.DropLogolabel:
+                    #if you double click on a label, the logos list shows
+                    if event.type()==QEvent.MouseButtonDblClick and self.LogosList.isHidden():
+                        self.LogosList.show()
+                        self.BrowseButton.show()
+                        #if you drag a logo and drop it on the DropLogo Label, the logo is shown on the Label
+                    elif event.__class__== QDragEnterEvent:
+                        #if an item is dragged 
+                        if len(self.LogosList.selectedItems())>0: # and self.LogosList.item(self.LogosList.count()-1)!=self.LogosList.selectedItems()[0] ):
+                                event.accept()
+                                event.mimeData().setText(self.LogosList.selectedItems()[0].toolTip())
+                                return True
+                    elif event.__class__== QDropEvent: 
+                        if self.projectClientBox.currentText() !="":#check if client not =""
+                            #Check if logo already exists for this client
+                            for file in listdir(ClientsLogos):  # For all img files in the directory
+                                if file.rsplit('.',1)[0]==self.this_projectclient :
+                                    qm = QMessageBox
+                                    ret = qm.question(self,'RCDC', "Logo already exists for this client. \n Would you like to replace logo", qm.Yes | qm.No )
+                                    if ret == qm.Yes:
+                                        for i in listdir(ClientsLogos):
+                                            if i.rsplit('.',1)[0]==self.this_projectclient:
+                                                remove(ClientsLogos+'\\'+ i)
+                                    elif ret== qm.No:
+                                        break
+                            else:
+                                #Copy file to Client logos and set name as client
+                                copyfile(r''+event.mimeData().text(), ClientsLogos + '\\' + self.this_projectclient + '.' + event.mimeData().text().rsplit('.',1)[1])
+                                self.close()
+                                self.__init__()
+                                msg= TimerMsgBox("Logo updated        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon, timeout=1)    
+                                msg.exec()
+                                self.exec()
+                            return True
+                        else:
+                            MsgBox("To set logo, this project client must be set", setWindowTitle="Client unknown", setIcon = QMessageBox.Information)
+
+
+
+            return super().eventFilter(source, event)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def delete(self, tableobj):
+        try:
+            if len([i.row() for i in tableobj.selectionModel().selectedRows()])==1:
+                qm= QMessageBox() #Message box to confirm deletion
+                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete '" + tableobj.item([i.row() for i in tableobj.selectionModel().selectedRows()][0]).toolTip()+ "'?", qm.Yes | qm.No)
+                if ret == qm.Yes:
+                    try:
+                        remove(tableobj.item([i.row() for i in tableobj.selectionModel().selectedRows()][0]).toolTip()) # delete logo
+                        self.close()
+                        self.__init__()
+                        msg= TimerMsgBox("Logo deleted        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon, timeout=1)    
+                        msg.exec()
+                        self.exec()
+                        
+                    except IOError: # ioerror is the error encountered if the drawing isn't able to be deleted because it is open
+                        #If there's error while opening the file, tell user to close the file to continue
+                        MsgBox("Please make sure the file '"+ tableobj.item([i.row() for i in tableobj.selectionModel().selectedRows()][0]).toolTip()+"' isn't open",setWindowTitle="File open", setIcon = QMessageBox.Critical)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def changeMade(self):
+        try:
+            if self.this_project3lettercode!=self.Letter3CodeEdit.text() or self.this_projectclient!=self.projectClientBox.currentText() or self.this_projectarchitect!=self.projectArchitectBox.currentText() \
+                or self.this_projectstatus!=self.projectStatusBox.currentText() or  self.this_projectstage!=self.projectStageBox.currentText() or self.this_projectlead!=self.projectLeadBox.currentText():
+                return True
+            teammembers= ','.join([self.projectTeamBox.itemText(i) for i in self.projectTeamBox.checkedItems])
+            if teammembers!=self.this_projectteam:
+                return True
+            
+            return False
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def funcOK(self):
+        try:
+             #note: (need to check for files/folder that might might need to be updated if project details is changed)
+            #only update project if any changes was actually made
+            if self.changeMade():
+                createProject=False
+                #Check for the project code
+                projectsWithSameCode=[]
+                for k, v in project3name_dict.items():
+                    if v not in [None, '', 'XXX'] and v== self.Letter3CodeEdit.text() and k!=self.this_projectfoldername:
+                        projectsWithSameCode.append(k.split(' - ',1)[1])
+                if len(projectsWithSameCode)>0:
+                    qm = QMessageBox
+                    ret = qm.question(self,'RCDC',"The project code '"+ self.Letter3CodeEdit.text() +"' already exists for the following projects:\n\n"+'\n'.join(projectsWithSameCode)+"\n\nDo you wish to continue and create a new project with same code (different project number)", qm.Yes | qm.No | qm.Cancel)
+                    if ret == qm.Yes:
+                        createProject=True
+                else:
+                    createProject=True
+                if createProject:   
+                    teammembers= ','.join([self.projectTeamBox.itemText(i) for i in self.projectTeamBox.checkedItems])
+                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Central_Database_accdb+';'#Connect to the Central database
+                    conn = pyodbc_connect(con_string)
+                    cursor =conn.cursor()   #Update the project details  
+                    values= (self.projectNameEdit.text(),self.Letter3CodeEdit.text(),self.projectClientBox.currentText(),self.projectStatusBox.currentText(),self.projectArchitectBox.currentText(), self.projectStageBox.currentText(), self.projectLeadBox.currentText(), teammembers, self.this_projectno)               
+                    cursor.execute("UPDATE ProjectList SET ProjectName= ?, ProjectCode= ?, Client= ?, Status= ?, Architect= ?, RIBAStage= ?, ProjectLead= ?, Team= ?  WHERE ProjectNo= ?", values )
+                    conn.commit()#Save the changes
+                    cursor.close()
+                    conn.close()#Close cursor and connection
+                
+                    #Populate the Issue sheet template
+                    if not(self.this_projectname == self.projectNameEdit.text() and self.this_projectclient==self.projectClientBox.currentText()):
+                        issuesheetFile = Project_Folders_dst+'\\'+self.this_projectfoldername+"\\9 Issues\\Document Issue Sheet - "+self.this_projectname+".xlsx"#issue sheet name
+                        if path.exists(issuesheetFile) == True:
+                            while True:
+                                try:
+                                    wb= load_workbook(filename=issuesheetFile, read_only=False)
+                                    self.sheet_name=wb['Sheet1'] #Sheet name
+                                    self.sheet_name['B2']=self.projectNameEdit.text()
+                                    self.sheet_name['B3']=self.projectClientBox.currentText()
+                                    # self.sheet_name['B4']=int(self.projectNoEdit.text())
+                                    wb.save(issuesheetFile)#save the file
+                                    wb.close()#close the file
+                                    break
+                                except IOError:
+                                    MsgBox(issuesheetFile+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Issue sheet file open",setIcon=QMessageBox.Critical)
+                        else:
+                            MsgBox("Tried modifying changes in the issue sheet file\n\n Couldn't find '"+issuesheetFile+"'", setWindowTitle="Error",setIcon = QMessageBox.Critical)
+                        
+                    #Go back to the main window after refreshing with new project
+                    self.close()
+
+                    refreshMainWindow()
+                    projectsTable.selectRow(self.this_projectindex)
+                    # widget.removeWidget(projectwindow)
+                    # projectwindow.__init__()
+                    # widget.addWidget(projectwindow) 
+                    # widget.setCurrentWidget(projectwindow)
+
+                    #Notify that the project has been successfully created
+                    msg= TimerMsgBox("Project updated        \n\nNote: Currently, changes made to the project doesn't update in any previously created files except for the issue sheet",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
+                    msg.exec_()
+            else:
+               MsgBox("No changes noticed\n\nNote: Updating a logo doesn't require you to click the OK button",setWindowTitle="   ", setIcon = QMessageBox.Information)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
 class ProjectsWidget(QWidget):
     def __init__(self):
@@ -335,9 +754,9 @@ class ProjectsWidget(QWidget):
           
           #Creating the table for the projects
             #(ignore the first 7 projects as these are not actual projects i.e. general,innovation,marketing,e.t.c)
-            data = [p for p in data if not p[1].startswith('0') or p[1]=="0007"] #Remove projects that start with 0 (i.e. 0001,0002,0003,0004,0005,0006) except for 0007
+            data = [p for p in data if not p.ProjectNo.startswith('0') or p.ProjectNo=="0007"] #Remove projects that start with 0 (i.e. 0001,0002,0003,0004,0005,0006) except for 0007
 
-            projectsTable = QTableWidget(len(data), 4)
+            projectsTable = QTableWidget(len(data), 7)
             
             projectsTable.setStyleSheet(projectsTable.styleSheet()+"""QHeaderView{background : transparent;}QHeaderView::section{font-family: "Microsoft YaHei"; color: #FFFFFF;background:#90a9c6; text-align:left; min-height: 49px; max-height:49px;
             margin-left:0px;padding-left: 0px;} QTableWidget{background: #FFFFFF; border:1px; border-style:outset; font-size:15px;}""")
@@ -346,21 +765,30 @@ class ProjectsWidget(QWidget):
             projectsTable.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignCenter)
 
           #Setting the header title of the table
-            projectsTable.setHorizontalHeaderLabels(["Project","Client","Status","Architect"])
+            projectsTable.columnLabels = ["Project","Client","Status","Architect", "Project Lead", "Team", "Key People"]
+            projectsTable.setHorizontalHeaderLabels(projectsTable.columnLabels)
 
-            for d in range(0,len(data)): 
-                projectsTable.setItem(d,0,QTableWidgetItem(data[d].ProjectNo+' - '+data[d].ProjectName)) # Set table column 0 as the record's field ProjectName (index 0 refers to column 1 and so on)
-                projectsTable.setItem(d,1,QTableWidgetItem(data[d].Client)) # Set table column 1 as the record's field Client
+            for d in range(len(data)): 
+                projectsTable.setItem(d,projectsTable.columnLabels.index("Project"),QTableWidgetItem(data[d].ProjectNo+' - '+data[d].ProjectName)) # Set table column 0 as the record's field ProjectName (index 0 refers to column 1 and so on)
+                projectsTable.setItem(d,projectsTable.columnLabels.index("Client"),QTableWidgetItem(data[d].Client)) # Set table column 1 as the record's field Client
                 if data[d].Client not in clients and data[d].Client not in [None,'']: #Populate 'clients' list that was declared at the top with all clients if client not already in the list and if the client field isn't empty
                     clients.append(data[d].Client)
-                projectsTable.setItem(d,2,QTableWidgetItem(data[d].Status)) # Set table column 2 as the record's field Status
+                projectsTable.setItem(d,projectsTable.columnLabels.index("Status"),QTableWidgetItem(data[d].Status)) # Set table column 2 as the record's field Status
                 if data[d].Architect not in architects and data[d].Architect not in [None,'']: #Populate 'architects' list that was declared at the top with all architects if architect not already in the list and if the architect field isn't empty
                     architects.append(data[d].Architect)
-                projectsTable.setItem(d,3,QTableWidgetItem(data[d].Architect)) # Set table column 3 as the record's field Status
+                projectsTable.setItem(d,projectsTable.columnLabels.index("Architect"),QTableWidgetItem(data[d].Architect)) # Set table column 3 as the record's field Status
+                projectsTable.setItem(d,projectsTable.columnLabels.index("Project Lead"),QTableWidgetItem(data[d].ProjectLead)) # Project Lead
+                projectsTable.setItem(d,projectsTable.columnLabels.index("Team"),QTableWidgetItem(data[d].Team)) # Team
+                projectsTable.setItem(d,projectsTable.columnLabels.index("Key People"),QTableWidgetItem(data[d].KeyPeople)) # Key People
                 RIBAstages[data[d].ProjectNo+' - '+data[d].ProjectName]=str(data[d].RIBAStage)#Populate 'RIBAStage' dictionary that was declared at the top with all riba stages
-            projectsTable.setColumnHidden(3,True)            #hide architect coloumn
+
+            projectsTable.setColumnHidden(projectsTable.columnLabels.index("Architect"),True)            #hide architect coloumn
+            projectsTable.setColumnHidden(projectsTable.columnLabels.index("Project Lead"),True)         #hide project lead coloumn
+            projectsTable.setColumnHidden(projectsTable.columnLabels.index("Team"),True)                 #hide team coloumn
+            projectsTable.setColumnHidden(projectsTable.columnLabels.index("Key People"),True)           #hide key people coloumn
             projectsTable.verticalHeader().setVisible(False) #hide vertical header
             projectsTable.setSortingEnabled(True) #Allow sorting of the columns when the header is clicked
+            projectsTable.sortByColumn(0,Qt.AscendingOrder) #Sort the table by the first column (Project Name) in ascending order
 
           #Connect the table item click and doubleclick to their functions
             # projectsTable.itemClicked.connect(self.on_projectClick)
@@ -386,7 +814,7 @@ class ProjectsWidget(QWidget):
 
           #Projects Info
             self.slctdProjectIndex=0
-            self.slctdProjectNameLabel=QLabel("")
+            self.slctdProjectName=QLabel("")
             self.previous_button = QToolButton()
             self.next_button = QToolButton()
             self.previous_button.clicked.connect(lambda: self.changeSlctdProject(-1))
@@ -397,7 +825,7 @@ class ProjectsWidget(QWidget):
             slctdProjectLabelLayout = QHBoxLayout()
             slctdProjectLabelLayout.addStretch()
             slctdProjectLabelLayout.addWidget(self.previous_button,0)#, alignment=Qt.AlignCenter)
-            slctdProjectLabelLayout.addWidget(self.slctdProjectNameLabel,0)#, alignment=Qt.AlignCenter)
+            slctdProjectLabelLayout.addWidget(self.slctdProjectName,0)#, alignment=Qt.AlignCenter)
             slctdProjectLabelLayout.addWidget(self.next_button,0)#, alignment=Qt.AlignCenter)
             slctdProjectLabelLayout.addStretch()
             slctdProjectLabelLayout.setSpacing(1)
@@ -405,29 +833,47 @@ class ProjectsWidget(QWidget):
             #Project Lead
             slctdProjectLeadLabel=QLabel("Project Lead:  ")
             slctdProjectLeadLabel.setStyleSheet("font-weight:bold;")
-            slctdProjectLead=QLabel("John Doe")
+            self.slctdProjectLead=QLabel("")
             # slctdProjectLead.setFixedSize(100, 32)
 
             #Team members
             slctdProjectTeamLabel=QLabel("Team:  ")
             slctdProjectTeamLabel.setStyleSheet("font-weight:bold;")
-            slctdProjectTeam=QLabel("JT, TF, LL")
+            self. slctdProjectTeam=QLabel("")
 
             #Externals
             #Stage
             slctdProjectStageLabel=QLabel("Stage:  ")
             slctdProjectStageLabel.setStyleSheet("font-weight:bold;")
-            slctdProjectStage=QLabel("3")
+            self.slctdProjectStage=QLabel("")
             # slctd
+
+            # Create an edit icon label
+            editIconButton = QToolButton()
+            # editIconButton.setAlignment(Qt.AlignTop | Qt.AlignRight)
+            editIconButton.setIcon(QIcon(edit_icon))
+            editIconButton.setIconSize(QSize(22,22))
+            editIconButton.setStyleSheet("background:white;border: none;")
+            editIconButton.setCursor(QCursor(Qt.PointingHandCursor))
+            editIconButton.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            editIconButton.clicked.connect(self.editProjectClicked)
+            
 
             #Project Info Form
             infoFormLayout=QFormLayout()
-            infoFormLayout.addRow(slctdProjectLeadLabel,slctdProjectLead)
-            infoFormLayout.addRow(slctdProjectTeamLabel,slctdProjectTeam)
-            infoFormLayout.addRow(slctdProjectStageLabel,slctdProjectStage)
+            infoFormLayout.addRow(slctdProjectLeadLabel,self.slctdProjectLead)
+            infoFormLayout.addRow(slctdProjectTeamLabel,self.slctdProjectTeam)
+            infoFormLayout.addRow(slctdProjectStageLabel,self.slctdProjectStage)
+            hlLayout = QHBoxLayout()
+            hlLayout.addLayout(infoFormLayout)
+            hlLayout.addStretch(6)
+            hlLayout.addWidget(editIconButton, 0, Qt.AlignRight | Qt.AlignTop)
+            hlLayout.addStretch(1)
+
             infoFormWidget=QWidget()
             infoFormWidget.setStyleSheet("QWidget{background:white;}")
-            infoFormWidget.setLayout(infoFormLayout)
+            infoFormWidget.setLayout(hlLayout)
+            infoFormWidget.setMaximumWidth(400)
 
             #Project Info Tabs
             self.projectInfoTabWidget=QTabWidget()
@@ -468,7 +914,6 @@ class ProjectsWidget(QWidget):
             self.OptionsLayout.addWidget(self.NewProjectButton)
             self.OptionsLayout.addStretch(2)
             self.OptionsLayout.addWidget(self.FinanceButton)
-        
             self.OptionsLayout.addStretch(38)
             self.OptionsLayout.addWidget(self.RefreshButton)  
             self.OptionsLayout.addStretch(2)
@@ -481,14 +926,16 @@ class ProjectsWidget(QWidget):
             FullLayout.addLayout(self.OptionsLayout)
             FullLayout.addLayout(MainLayout)  
             self.setLayout(FullLayout)
+        
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
     def style_slctdProjectNameLabel(self):
         try:
-            self.slctdProjectNameLabel.setStyleSheet("font-size:20px;background:white;")
-            self.slctdProjectNameLabel.setAlignment(Qt.AlignCenter)
-            self.slctdProjectNameLabel.setStyleSheet("background:white; border: none; color:rgba(0,0,0,0.7); font-size: 18px;")
-            self.slctdProjectNameLabel.setFixedSize(380, 32)
+            self.slctdProjectName.setStyleSheet("font-size:20px;background:white;")
+            self.slctdProjectName.setAlignment(Qt.AlignCenter)
+            self.slctdProjectName.setStyleSheet("background:white; border: none; color:rgba(0,0,0,0.7); font-size: 18px;")
+            self.slctdProjectName.setFixedSize(380, 32)
             self.previous_button.setIcon(QIcon(previous_icon)) #set icon for buttons
             self.next_button.setIcon(QIcon(next_icon))
             self.previous_button.setIconSize(QSize(21, 21))
@@ -516,12 +963,14 @@ class ProjectsWidget(QWidget):
                 projectsTable.setRowHidden(row, False) 
                 if stats=="All":
                     continue
-                if projectsTable.item(row,2).text() != stats:
+                if projectsTable.item(row,projectsTable.columnLabels.index("Status")).text() != stats:
                     projectsTable.setRowHidden(row, True)
             #select the first visible row
             for row in range(projectsTable.rowCount()):
                 if projectsTable.isRowHidden(row)==False:
                     projectsTable.selectRow(row)
+                    #set its focus
+                    # projectsTable.select
                     break
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -551,15 +1000,18 @@ class ProjectsWidget(QWidget):
         try:
             selectedRows=projectsTable.selectionModel().selectedRows()
             if len(selectedRows)==1:
-                clickedrow=selectedRows[0].row()
-                project=text=projectsTable.item(clickedrow,0).text()
-                self.slctdProjectNameLabel.setToolTip(text)
+                self.slctdProjectIndex=selectedRows[0].row()
+                project=text=projectsTable.item(self.slctdProjectIndex,projectsTable.columnLabels.index("Project")).text()
+                self.slctdProjectName.setToolTip(text)
                 if len(text)>37:
                     text=text[:37]+"..."
-                self.slctdProjectNameLabel.setText(text)
+                self.slctdProjectName.setText(text)
+
+                self.slctdProjectLead.setText(projectsTable.item(self.slctdProjectIndex,projectsTable.columnLabels.index("Project Lead")).text())
+                self.slctdProjectTeam.setText(projectsTable.item(self.slctdProjectIndex,projectsTable.columnLabels.index("Team")).text())
+                self.slctdProjectStage.setText(RIBAstages[project])
                 
-                # self.slctdProjectNameLabel.setFixedWidth(self.slctdProjectNameLabel.fontMetrics().boundingRect(text).width()+40)
-                self.slctdProjectIndex=clickedrow
+                # self.slctdProjectName.setFixedWidth(self.slctdProjectName.fontMetrics().boundingRect(text).width()+40)
                 self.projectsDeadlineWidget.updateTable(project)
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -578,11 +1030,18 @@ class ProjectsWidget(QWidget):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
+    def editProjectClicked(self):
+        try:
+            admindialog=Admin_Dialog(self.slctdProjectIndex)
+            admindialog.exec()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical) 
+
 class ProjectsDeadlineWidget(QWidget):
     def __init__(self):
         try:
             super().__init__()
-            self.project=None
+            self.project=self.projectadminfolder=None
             self.NewDeadlineButton=QToolButton()
             self.NewDeadlineButton.setText("New deadline")
             self.NewDeadlineButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
@@ -592,9 +1051,10 @@ class ProjectsDeadlineWidget(QWidget):
             self.NewDeadlineButton.clicked.connect(self.NewDeadlineClicked)#Connecting the button to its function when clicked
             self.NewDeadlineButton.setMinimumHeight(30)
             self.NewDeadlineButton.setCursor(QCursor(Qt.PointingHandCursor))
-            QShortcut(QKeySequence('Ctrl+A'),self).activated.connect(self.NewDeadlineClicked)
-            self.deadlineTable=QTableWidget(1,1)
-
+            QShortcut(QKeySequence('Ctrl+D'),self).activated.connect(self.NewDeadlineClicked)
+            self.deadlineTable=QTableWidget(0,3)
+            self.deadlineTable.verticalHeader().setVisible(False)
+            self.deadlineTable.setSelectionBehavior(QAbstractItemView.SelectRows)
 
             MainLayout=QVBoxLayout()
             MainLayout.addWidget(self.NewDeadlineButton)
@@ -606,34 +1066,63 @@ class ProjectsDeadlineWidget(QWidget):
     def updateTable(self, project):
         try:
             self.project=project
-            projectadminfolder= Project_Folders_dst+"\\"+self.project+"\\2 Project Admin"
-            if self.project!=None and path.exists(projectadminfolder):
-                # self.deadlineTable.clear()
-                # self.deadlineTable.setRowCount(0)
+            self.projectadminfolder= Project_Folders_dst+"\\"+self.project+"\\2 Project Admin"
+            self.deadlineTable.clear()
+            self.deadlineTable.setRowCount(0)
+            if self.project!=None and path.exists(self.projectadminfolder):
+                self.columnLabels=["Activity","Hours","Deadline"]#,"Status"]
+                self.deadlineTable.setHorizontalHeaderLabels(self.columnLabels)
+                
+                self.activeActivities=[]
+                if path.exists(self.projectadminfolder+"\\Activities"):
+                    for activityfile in listdir(self.projectadminfolder+"\\Activities"):
+                        with open(self.projectadminfolder+"\\Activities\\"+activityfile, 'r') as f:
+                            activity=json_load(f)
+                            self.activeActivities.append(activity)
+                
+                for activity in self.activeActivities:
+                    self.deadlineTable.insertRow(self.deadlineTable.rowCount())
+                    self.deadlineTable.setItem(self.deadlineTable.rowCount()-1,self.columnLabels.index("Activity"),QTableWidgetItem(activity["Activity"]))
+                    self.deadlineTable.setItem(self.deadlineTable.rowCount()-1,self.columnLabels.index("Hours"),QTableWidgetItem(str(activity["Hours"])+"hrs"))
+                    self.deadlineTable.setItem(self.deadlineTable.rowCount()-1,self.columnLabels.index("Deadline"),QTableWidgetItem(activity["Deadline"]))
+                    # self.deadlineTable.setItem(self.deadlineTable.rowCount()-1,self.columnLabels.index("Status"),QTableWidgetItem(activity["Status"])
+
                 self.NewDeadlineButton.setEnabled(True)
             else:
                 self.NewDeadlineButton.setEnabled(False)
-            
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def NewDeadlineClicked(self):
         try:
-
             self.deadlineEdit=QTextEdit()
             self.deadlineEdit.setPlaceholderText("Enter deadline")
 
             self.deadlineEdit.setStyleSheet("QTextEdit{border:1px solid #90a9c6; border-radius:4px;}")
+
+            self.hoursBox=QDoubleSpinBox()
+            self.hoursBox.setRange(0, 1000)
+            self.hoursBox.setValue(1)
+            self.hoursBox.setSuffix("hrs")
+
+            # self.hoursBox.setStyleSheet("QDoubleSpinBox{border:1px solid #90a9c6; border-radius:4px;}")
+            self.dateEdit=QDateEdit()
+            self.dateEdit.setDate(QDate.currentDate())
+            self.dateEdit.setCalendarPopup(True)
+            # self.dateEdit.setStyleSheet("QDateEdit{border:1px solid #90a9c6; border-radius:4px;}")
             self.newdialog=QDialog()
  
             buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             buttonBox.accepted.connect(self.funcOK)
             buttonBox.rejected.connect(self.newdialog.reject)
-            vbox=QVBoxLayout()
-            vbox.addWidget(self.deadlineEdit)
-            vbox.addWidget(buttonBox)
-            self.newdialog.setLayout(vbox)
+            form=QFormLayout()
+            form.addRow(self.deadlineEdit)
+            form.addRow("Time required",self.hoursBox)
+            form.addRow("Deadline date",self.dateEdit)
+            form.addRow(buttonBox)
+            self.newdialog.setLayout(form)
             
+            self.newdialog.setWindowFlags(self.newdialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
             self.newdialog.setWindowTitle("New deadline")
             self.newdialog.exec()
 
@@ -642,7 +1131,22 @@ class ProjectsDeadlineWidget(QWidget):
     def funcOK(self):
         try:
             if self.deadlineEdit.toPlainText().strip()!="":
-
+                if path.exists(self.projectadminfolder+"\\Activities")==False:
+                    mkdir(self.projectadminfolder+"\\Activities")
+                #create activity file
+                count=1
+                while path.exists(self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"):
+                    count+=1
+                activityfile=self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"
+                with open(activityfile, 'w') as f: #create activity file
+                    obj= {
+                        "Activity": self.deadlineEdit.toPlainText().strip(),
+                        "Hours": self.hoursBox.value(),
+                        "Deadline": self.dateEdit.text(),
+                        "Status": "Open"
+                    }
+                    json_dump(obj, f, indent=2)
+                self.updateTable(self.project)
 
                 self.newdialog.accept()
             else:
@@ -951,7 +1455,7 @@ class ActionsTable(QTableWidget):
                                 self.item(self.rowCount()-len(usr_actions)+d,i).setToolTip(tooltip)
 
             # if this_userdata!=None and json_data["actionapprover"]==this_userdata["device"]:
-            self.itemDoubleClicked.connect(lambda:self.editAction())
+            self.itemDoubleClicked.connect(lambda: self.editAction())
             self.setShowGrid(False) #disable grid lines
             # self.setGridStyle(Qt.NoPen)
 
@@ -1288,17 +1792,14 @@ class ActionsTable(QTableWidget):
                 ActionEdit= QTextEdit(self)
                 ActionEdit.setText(self.item(r,self.columnLabels.index("Action")).text())
                 dialog.HoursRequiredBox=QDoubleSpinBox(self)
-                dialog.HoursRequiredBox.setSuffix('hr')
+                dialog.HoursRequiredBox.setSuffix('hrs')
                 dialog.HoursRequiredBox.setDecimals(0)
-                dialog.HoursRequiredBox.setMinimum(0)
-                dialog.HoursRequiredBox.setValue(1)
+                dialog.HoursRequiredBox.setRange(0,1000)
                 dialog.HoursRequiredBox.setMaximumWidth(80)
                 dialog.MinutesRequiredBox=QDoubleSpinBox(self)
-                dialog.MinutesRequiredBox.setSuffix('min')
+                dialog.MinutesRequiredBox.setSuffix('mins')
                 dialog.MinutesRequiredBox.setDecimals(0)
-                dialog.MinutesRequiredBox.setMinimum(0)
-                dialog.MinutesRequiredBox.setMaximum(59)
-                dialog.MinutesRequiredBox.setValue(0)
+                dialog.MinutesRequiredBox.setRange(0,59)
                 dialog.MinutesRequiredBox.setMaximumWidth(80)
                 dialog.HoursRequiredBox.setValue(self.item(r,self.columnLabels.index("Time Required")).data(256)['hr'])
                 dialog.MinutesRequiredBox.setValue(self.item(r,self.columnLabels.index("Time Required")).data(256)['min'])
@@ -1332,18 +1833,21 @@ class ActionsTable(QTableWidget):
                 dialog.WeekBox=CheckableComboBox()
                 dialog.WeekBox.setEnabled(False)
                 self.WeekCheck.stateChanged.connect(lambda: self.WeekChecked(dialog))
+                dialog.WeekBox.addItem("")
                 dialog.weeksData={}
 
+                #Add past weeks to the combo box
                 foundWeeks= self.item(r,self.columnLabels.index("Action")).data(256)
                 if foundWeeks!=None:
                     self.WeekCheck.setChecked(True)
                     #Add past weeks to the combo box
                     for wk in foundWeeks:
-                        if QDate.fromString(wk,'dd/MM/yyyy')<QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1):
+                        if QDate.fromString(wk,'dd/MM/yyyy')<QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1): #if the week is in the past
                             start= QDate.fromString(wk,'dd/MM/yyyy')
                             end = start.addDays(4)
                             dialog.WeekBox.addItem(f"{start.toString('MMM dd')} - {end.toString('MMM dd')}",start)
                             index=dialog.WeekBox.count()-1
+
                             dialog.WeekBox.model().item(index).setCheckState(Qt.Checked)
                             dialog.WeekBox.checkedItems.add(index)
                             spinbox=QDoubleSpinBox()
@@ -1371,6 +1875,8 @@ class ActionsTable(QTableWidget):
 
                     else:
                         dialog.WeekBox.model().item(index).setCheckState(Qt.Unchecked)
+                dialog.WeekBox.setItemText(0, ', '.join([dialog.WeekBox.itemText(i) for i in dialog.WeekBox.checkedItems]))
+
                     #add a text box to the combo box
                     # dialog.WeekBox.
                 dialog.weeksGrid= QGridLayout() #grid layout to fill the weeks hours
@@ -2281,16 +2787,15 @@ class NewAction_Dialog(QDialog):
             # self.PriorityBox.addItems(['Urgent','High Priority','Medium Priority', 'Low Priority'])
 
             self.HoursRequiredBox=QDoubleSpinBox(self)
-            self.HoursRequiredBox.setSuffix('hr')
+            self.HoursRequiredBox.setSuffix('hrs')
             self.HoursRequiredBox.setDecimals(0)
-            self.HoursRequiredBox.setMinimum(0)
+            self.HoursRequiredBox.setRange(0,1000)
             self.HoursRequiredBox.setValue(1)
             self.HoursRequiredBox.setMaximumWidth(80)
             self.MinutesRequiredBox=QDoubleSpinBox(self)
-            self.MinutesRequiredBox.setSuffix('min')
+            self.MinutesRequiredBox.setSuffix('mins')
             self.MinutesRequiredBox.setDecimals(0)
-            self.MinutesRequiredBox.setMinimum(0)
-            self.MinutesRequiredBox.setMaximum(59)
+            self.MinutesRequiredBox.setRange(0,59)
             self.MinutesRequiredBox.setValue(0)
             self.MinutesRequiredBox.setMaximumWidth(80)
             self.HoursRequiredBox.valueChanged.connect(self.DeadlineCheck)
@@ -2327,12 +2832,13 @@ class NewAction_Dialog(QDialog):
             # currentweek=QDate.currentDate().weekNumber()
             # print(currentweek)
             # Get start of current week
+            self.WeekBox.addItem("")
             thisweek = QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1)
             for count in range(30):
                 start= thisweek.addDays(count*7)
                 end = start.addDays(4)
                 self.WeekBox.addItem(f"{start.toString('MMM dd')} - {end.toString('MMM dd')}",start) 
-                self.WeekBox.model().item(count).setCheckState(Qt.Unchecked)
+                self.WeekBox.model().item(count+1).setCheckState(Qt.Unchecked)
                 #add a text box to the combo box
                 # self.WeekBox.
             self.WeekBox.setEnabled(False)
@@ -2371,7 +2877,7 @@ class NewAction_Dialog(QDialog):
             self.PriorityChanged(self.PriorityBox.currentText())
             self.WeekCheck.setChecked(True)
             #get the model index of the first column
-            self.WeekBox.handleItemPressed(self.WeekBox.model().index(0,0))
+            self.WeekBox.handleItemPressed(self.WeekBox.model().index(1,0))
 
             self.form= QFormLayout()
             self.form.addRow('Action for:', self.ActionforBox)
@@ -3088,7 +3594,7 @@ class Init_Window(QMainWindow):
             self.Page =QTabWidget()
             self.Page.addTab(self.projectsWidget,"Projects")
             self.Page.addTab(self.actionsWidget,"Actions")
-            self.Page.setCurrentIndex(1)
+            # self.Page.setCurrentIndex(1)
             #set stylesheet for tabwidget
             self.Page.setStyleSheet("""QTabWidget::pane {border: 0px solid #000000; border-radius: 0px; background:rgb(215, 215, 215);}""")
             self.setCentralWidget(self.Page)
@@ -3243,7 +3749,7 @@ class Init_Window(QMainWindow):
     def ChangeActiveUser(self):
         try:
             form=QFormLayout() 
-            usersListBox=QComboBox() 
+            usersListBox=QComboBox()
             usersListBox.addItems([usr['initial'] for usr in json_data["employees"]])
             buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             form.addRow("User:", usersListBox)
@@ -5202,12 +5708,12 @@ class ProjectWindow(QMainWindow):
           #Declaring variables for project details
             # print(activeProjectrow)
             global ThisProject_name, ThisProject_foldername, ThisProject_no, ThisProject_client, ThisProject_status, ThisProject_architect, ThisProject_RIBAstage
-            ThisProject_foldername= str(projectsTable.item(activeProjectrow,0).text())
+            ThisProject_foldername= str(projectsTable.item(activeProjectrow,projectsTable.columnLabels.index("Project")).text())
             ThisProject_no= ThisProject_foldername.split(' - ',1)[0]
             ThisProject_name= ThisProject_foldername.split(' - ',1)[1]
-            ThisProject_client= str(projectsTable.item(activeProjectrow,1).text())
-            ThisProject_status= str(projectsTable.item(activeProjectrow,2).text())
-            ThisProject_architect= str(projectsTable.item(activeProjectrow,3).text())
+            ThisProject_client= str(projectsTable.item(activeProjectrow,projectsTable.columnLabels.index("Project")).text())
+            ThisProject_status= str(projectsTable.item(activeProjectrow,projectsTable.columnLabels.index("Client")).text())
+            ThisProject_architect= str(projectsTable.item(activeProjectrow,projectsTable.columnLabels.index("Architect")).text())
 
             #Variables for folder paths
             global ProjectDrawingFolder, ProjectIssueFolder, ProjectAdminFolder, ProjectReportFolder, ProjectFinanceFolder, ProjectQAFolder, ProjectCalcsFolder, ProjectSpecsFolder, ProjectSchedulesFolder
@@ -5287,7 +5793,8 @@ class ProjectWindow(QMainWindow):
 
             btn10 = QPushButton("Admin")
             btn10.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
-            btn10.clicked.connect(self.btn10clicked)
+            # btn10.clicked.connect(self.btn10clicked)
+            btn10.setEnabled(False)
         
             #Add buttons to a layout
             grid = QGridLayout()
@@ -5405,27 +5912,11 @@ class ProjectWindow(QMainWindow):
             # deadlineWidget=QWidget()
             # deadlineWidget.setLayout(deadlineLayout)
             
-            CurRIBAStageLabel =QLabel("Current RIBA Stage:")
-            self.CurRIBAStageBox=QComboBox()
-            self.CurRIBAStageBox.addItems(["XX","01","02","03","04","05","06","07","None"])
-            self.CurRIBAStageBox.setEnabled(False)
-
-            ThisProject_RIBAstage= RIBAstages[ThisProject_foldername]
-            if ThisProject_RIBAstage=='':
-                ThisProject_RIBAstage= 'None'
-            self.CurRIBAStageBox.setCurrentText(ThisProject_RIBAstage)
-            self.UpdRIBAStageButton=QPushButton("Update")
-            self.UpdRIBAStageButton.clicked.connect(self.UpdateRIBAclicked)
-
-            RIBALayout =QHBoxLayout()
-            RIBALayout.addWidget(CurRIBAStageLabel)
-            RIBALayout.addWidget(self.CurRIBAStageBox)
-            RIBALayout.addWidget(self.UpdRIBAStageButton)
+           
         
           #Page layout
             TophrLayout = QHBoxLayout()
             TophrLayout.addWidget(currentProjectLabel,1)
-            TophrLayout.addLayout(RIBALayout)
             # TophrLayout.addStretch(1)
             # verLayout.addStretch(1)
 
@@ -5591,52 +6082,21 @@ class ProjectWindow(QMainWindow):
             widget.setCurrentWidget(issueswindow)
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    #Minutes and Agendas
-    def btn9clicked(self):
+    # #Minutes and Agendas
+    # def btn9clicked(self):
         try:
             pass
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     #Admin
-    def btn10clicked(self):
-        try: 
-            global admindialog
-            admindialog=Admin_Dialog()
-            admindialog.exec()
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    # def btn10clicked(self):
+    #     try: 
+    #         global admindialog
+    #         admindialog=Admin_Dialog()
+    #         admindialog.exec()
+        # except :
+        #     MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    def UpdateRIBAclicked(self):
-        try:
-            if self.UpdRIBAStageButton.text()=="Update":
-                self.CurRIBAStageBox.setEnabled(True)
-                self.UpdRIBAStageButton.setText("Done")
-            elif self.UpdRIBAStageButton.text()=="Done":
-                if self.CurRIBAStageBox.currentText()==RIBAstages[ThisProject_foldername]:
-                    MsgBox("No changes noticed", setWindowTitle="      ",setIcon = QMessageBox.Information)
-                    self.CurRIBAStageBox.setEnabled(False)
-                    self.UpdRIBAStageButton.setText("Update")
-                else:
-                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Central_Database_accdb+';'
-                    conn = pyodbc_connect(con_string)
-                    cursor =conn.cursor()       
-                    cursor.execute("UPDATE ProjectList SET RIBAstage = '"+ self.CurRIBAStageBox.currentText() +"' WHERE ProjectNo= '" +ThisProject_no+"'")
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
-
-                    
-                    refreshMainWindow()
-
-                    widget.removeWidget(projectwindow)
-                    projectwindow.__init__()
-                    widget.addWidget(projectwindow) 
-                    widget.setCurrentWidget(projectwindow)
-                    
-                    
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
     def AddActionsClicked(self):
         try:
             global newactiondialog
@@ -10236,6 +10696,7 @@ class ReportsPresMemosWindow(QMainWindow):
             self.RefreshButton.setIconSize(QSize(45, 35))
             self.RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
             QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
+          
           #Help button
             self.HelpButton = QToolButton()
             # self.HelpButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
@@ -10515,46 +10976,12 @@ class NewReport_Dialog(QDialog):
             if project3name_dict[ThisProject_foldername] =='XXX':
                 MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'",setWindowTitle="Error", setIcon = QMessageBox.Critical)
             
-        #   #Create a label to drop the logo for the project
-        #     self.DropLogolabel=QLabel("\n\nDrop Logo Here\n\n")
-        #     self.DropLogolabel.setAlignment(Qt.AlignCenter)
-        #     self.DropLogolabel.setStyleSheet('''
-        #         QLabel{
-        #         font:20px; border: 4px dashed #aaa
-        #         }
-        #     ''')
-        #     self.DropLogolabel.setAcceptDrops(True)#Enable drops onto the label
-        #     self.DropLogolabel.installEventFilter(self)
-        #     # self.DropLogolabel.mouseDoubleClickEvent
-        #   #Create a list widget and populate all existing clients logos 
-        #     self.LogosList= QListWidget()
-        #     self.LogosList.setViewMode(QListView.IconMode)
-        #     self.LogosList.setIconSize(QSize(80,80))
-        #     self.LogosList.itemDoubleClicked.connect(self.imgdblClicked)
-            
-            # if path.exists(ClientsLogos):#The ClientsLogos is a path to where the logos are stored, it is set at the bottom of the page under the if__name__==__main__ statement
-            #     for file in listdir(ClientsLogos):  # For all img files in the directory
-            #         if file.endswith(".png") or file.endswith(".jfif") or file.endswith(".jpg") or file.endswith("jpeg"):
-            #             if file.rsplit('.',1)[0]==ThisProject_client:# If file name = this project name
-            #                 self.DropLogolabel.setPixmap(QPixmap(path.join(ClientsLogos, file)).scaled(200,200))#Put image in logo label
-            #                 self.DropLogolabel.setToolTip(path.join(ClientsLogos, file)) # Set the label tool tip to image fullpath
-            #                 self.LogosList.hide() #Hide logos  list since this project has a set logo
-            #             item= QListWidgetItem()
-            #             icon = QIcon()
-            #             icon.addPixmap(QPixmap(path.join(ClientsLogos, file)), QIcon.Normal, QIcon.Off)
-            #             item.setIcon(icon)
-            #             item.setToolTip(path.join(ClientsLogos, file))
-
-            #             self.LogosList.addItem(item)#Add all images in folder to the logos list
-            # else:
-            #     self.LogosList.addItem("Path '" +ClientsLogos + "' not found")
-
           #Create Dropdowns and fill them
             self.ReportTitleEdit= QLineEdit(self)
             # self.ReportTitleEdit.setEditable(True)
             self.TypeListBox= QComboBox(self)
-            self.TypeListBox.addItems(['Stage 2', 'Stage 3', 'Stage 4', 'CEAP Business case', 'Embodied carbon', 'Feasibility', 'Utilities', 'Other'])
-            self.TypeListBox.setEditable(True)
+            self.TypeListBox.addItems(['Stage 2', 'Stage 3', 'Stage 4', 'CEAP Business case', 'Embodied carbon', 'Feasibility', 'Utilities', 'Site Visit Report', 'Other'])
+            # self.TypeListBox.setEditable(True)
 
             self.RoleListBox= QComboBox(self)
             for i in DrawNamingDict['Role']:
@@ -10624,33 +11051,6 @@ class NewReport_Dialog(QDialog):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
             newreportdialog.close()
-    # def imgdblClicked(self, index):
-    #     try:
-    #         self.DropLogolabel.setPixmap(QPixmap(index.toolTip()).scaled(200,200))
-    #         self.DropLogolabel.setToolTip(index.toolTip())
-    #     except :
-    #         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-
-    # def eventFilter(self, source, event):
-    #     try:
-    #         if source==self.DropLogolabel:
-    #             #if you double click on a label, the logos list shows
-    #             if event.type()==QEvent.MouseButtonDblClick and self.LogosList.isHidden()==True:
-    #                 self.LogosList.show()
-    #                 #if you drag a logo and drop it on the DropLogo Label, the logo is shown on the Label
-    #             elif event.__class__== QDragEnterEvent:
-    #                 if len(self.LogosList.selectedItems())>0:
-    #                     event.accept()
-    #                     event.mimeData().setText(self.LogosList.selectedItems()[0].toolTip())
-    #                     return True
-    #             elif event.__class__== QDropEvent:
-    #                 self.DropLogolabel.setPixmap(QPixmap(event.mimeData().text()).scaled(200,200))
-    #                 self.DropLogolabel.setToolTip(event.mimeData().text())
-    #                 return True
-    #         return super().eventFilter(source, event)
-    #     except :
-    #         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def RoleChanged(self, index):
         try:
@@ -10683,10 +11083,13 @@ class NewReport_Dialog(QDialog):
                   #Add the new report into the project database if it is found and if the report folder for this project is found
                     if path.exists(ProjectReportFolder):
                         if path.exists(ProjectReportFolder+'\\'+self.FullNameBox.text()+'.docx')==False:
-                            if self.A3RadioBut.isChecked():
-                                self.ReportTemp=A3ReportTemp
+                            if self.TypeListBox.currentText()=="Site Visit Report":
+                                self.ReportTemp=SiteVisitReportTemp
                             else:
-                                self.ReportTemp=A4ReportTemp
+                                if self.A3RadioBut.isChecked():
+                                    self.ReportTemp=A3ReportTemp
+                                else:
+                                    self.ReportTemp=A4ReportTemp
                             if path.exists(self.ReportTemp):
                                 self.ThisClientLogo=""
                                 self.proceed=""
@@ -10701,22 +11104,50 @@ class NewReport_Dialog(QDialog):
                                     if ret == qm.Yes:
                                         self.proceed="Yes"
                                 if self.proceed=="Yes":
-                                    # text.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-                                    doc=docx.Document(self.ReportTemp) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
+                                    while True:
+                                        try:
+                                            # text.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+                                            doc=docx.Document(self.ReportTemp) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
+                                            break
+                                        except docx.opc.exceptions.PackageNotFoundError:
+                                            MsgBox("Please make sure '"+self.ReportTemp+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Template file open", setIcon = QMessageBox.Critical)
+
                                     for par in doc.paragraphs:#Check for Report Title in the doc and replace with the title in the report title box
-                                        if par.text=="[ReportTitle]":
-                                            par.add_run().font.size = Pt(48) #set font size
-                                            par.runs[0].text=self.ReportTitleEdit.text() #Replace text
-                                        elif par.text=="[ProjectTitle]":##Similar to report title
-                                            par.add_run().font.size = Pt(24) 
-                                            par.runs[0].text=ThisProject_name
-                                            # par.text=ThisProject_name
-                                        elif par.text=="[ReportDate]":
-                                            par.add_run().font.size = Pt(18) 
-                                            par.runs[0].text="Date: "+str(date.today().strftime("%d/%m/%y"))#set date in the formt
-                                            # par.runs[1].text=''
-                                            # par.runs[2].text=''
-                                            # par.text= "Date: "+str(date.today().strftime("%d/%m/%y"))
+                                        # if par.text=="[ReportTitle]":
+                                        #     par.add_run().font.size = Pt(48) #set font size
+                                        #     par.runs[0].text=self.ReportTitleEdit.text() #Replace text
+                                        # elif par.text=="[ProjectTitle]":##Similar to report title
+                                        #     par.add_run().font.size = Pt(24) 
+                                        #     par.runs[0].text=ThisProject_name
+                                        #     # par.text=ThisProject_name
+                                        # elif par.text=="[ProjectNo]":
+                                        #     par.add_run().font.size = Pt(24)
+                                        #     par.runs[0].text=ThisProject_no
+                                        # elif par.text=="[ReportDate]":
+                                        #     par.add_run().font.size = Pt(18) 
+                                        #     par.runs[0].text="Date: "+str(date.today().strftime("%d/%m/%y"))#set date in the formt
+                                        #     # par.runs[1].text=''
+                                        #     # par.runs[2].text=''
+                                        #     # par.text= "Date: "+str(date.today().strftime("%d/%m/%y"))
+                                        
+                                        if '[ReportTitle]' in par.text:
+                                            for run in par.runs:
+                                                if "[ReportTitle]"  in run.text:
+                                                    run.text= run.text.replace("[ReportTitle]",self.ReportTitleEdit.text())
+                                        elif '[ProjectTitle]' in par.text:
+                                            for run in par.runs:
+                                                if "[ProjectTitle]"  in run.text:
+                                                    run.text= run.text.replace("[ProjectTitle]",ThisProject_name)
+                                        elif '[ProjectNo]' in par.text:
+                                            for run in par.runs:
+                                                if "[ProjectNo]"  in run.text:
+                                                    run.text= run.text.replace("[ProjectNo]",ThisProject_no)
+                                        elif '[ReportDate]' in par.text:
+                                            for run in par.runs:
+                                                if "[ReportDate]"  in run.text:
+                                                    run.text= run.text.replace("[ReportDate]", f"Date: {str(date.today().strftime('%d/%m/%y'))}")
+
+
                                         elif par.text== "[ClientLogo]" and self.ThisClientLogo!="":
                                             # pass
                                             par.text =""
@@ -11882,397 +12313,6 @@ class SchedulesTemplates_Dialog(QDialog):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-class Admin_Dialog(QDialog):
-    def __init__(self):
-        try:
-            super(Admin_Dialog, self).__init__()
-            self.setMaximumSize(500,600)
-            # global admindialog
-            # self.resize(360,400)
-            # self.setStyleSheet("QDialog{background : white;}QGroupBox{background : white;}")
-          
-          #Create a label to drop the logo for the project
-            self.DropLogolabel=QLabel("\nDrop logo here\n OR\n Browse files to select logo\n")
-            self.DropLogolabel.setAlignment(Qt.AlignCenter)
-            self.DropLogolabel.setStyleSheet('''
-                QLabel{
-                font:20px; border: 4px dashed #aaa
-                }
-            ''')
-            self.DropLogolabel.setAcceptDrops(True)#Enable drops onto the label
-            self.DropLogolabel.installEventFilter(self)
-            # self.DropLogolabel.mouseDoubleClickEvent
-            self.infoLabel= QLabel("To change logo double click on the logo",self)
-            self.infoLabel.setStyleSheet("QLabel{font:12px; color:red;}")
-            self.infoLabel.hide()
-
-          #Create a list widget and populate all existing clients logos 
-            self.LogosList= QListWidget()
-            self.LogosList.setViewMode(QListView.IconMode)
-            self.LogosList.setIconSize(QSize(80,80))
-            self.LogosList.itemDoubleClicked.connect(self.imgdblClicked)
-            self.BrowseButton=QPushButton("Browse Files")
-            self.BrowseButton.clicked.connect(self.BrowseButtonClicked)
-            self.LogosLayout= QVBoxLayout()
-            self.LogosLayout.addWidget(self.LogosList)
-            self.LogosLayout.addWidget(self.BrowseButton)
-            self.LogosLayout.setSpacing(5)
-
-            if path.exists(ClientsLogos):#The ClientsLogos is a path to where the logos are stored, it is set at the bottom of the page under the if__name__==__main__ statement
-                for file in listdir(ClientsLogos):  # For all img files in the directory
-                    if file.endswith(".png") or file.endswith(".jfif") or file.endswith(".jpg") or file.endswith("jpeg"):
-                        if file.rsplit('.',1)[0]==ThisProject_client:# If file name = this project name
-                            self.DropLogolabel.setPixmap(QPixmap(path.join(ClientsLogos, file)).scaled(200,200))#Put image in logo label
-                            self.DropLogolabel.setToolTip(path.join(ClientsLogos, file)) # Set the label tool tip to image fullpath
-                            self.LogosList.hide()#Hide logos  list since this project has a set logo
-                            self.BrowseButton.hide()
-                            self.infoLabel.show()
-                        item= QListWidgetItem()
-                        icon = QIcon()
-                        icon.addPixmap(QPixmap(path.join(ClientsLogos, file)), QIcon.Normal, QIcon.Off)
-                        item.setIcon(icon)
-                        item.setToolTip(path.join(ClientsLogos, file))
-
-                        self.LogosList.addItem(item)#Add all images in folder to the logos list
-                # item= QListWidgetItem()
-                # icon = QIcon()
-                # icon.addPixmap(QPixmap(new_icon), QIcon.Normal, QIcon.Off)
-                # item.setIcon(icon)
-                # self.LogosList.addItem(item)
-            else:
-                self.LogosList.addItem("Path '" +ClientsLogos + "' not found")
-
-          #Create labels and input boxes
-            self.projectName = QLabel('Project Name:', self)
-            self.projectNameEdit= QLineEdit(self)
-            self.projectNameEdit.setText(ThisProject_name)
-            self.projectNameEdit.setEnabled(False)
-            
-            self.Letter3Code = QLabel('3 Letter Code:', self)
-            self.Letter3CodeEdit= QLineEdit(self)
-            self.Letter3CodeEdit.setMaxLength(3)
-            # if self.sheet_name['A'+str(self.row)].value != None:
-            self.Letter3CodeEdit.setText(project3name_dict[ThisProject_foldername])
-            self.Letter3CodeEdit.setEnabled(False)
-            self.Letter3CodeEditButton=QPushButton('Edit',self)
-            self.Letter3CodeEditButton.clicked.connect(lambda: self.Letter3CodeEdit.setEnabled(True))
-
-            self.projectNo =  QLabel('Project No:', self)
-            self.projectNoEdit= QLineEdit(self)
-            self.projectNoEdit.setText(ThisProject_no)
-            self.projectNoEdit.setEnabled(False)
-
-            self.projectClient =  QLabel('Client:', self)
-            self.projectClientBox=  QComboBox(self)
-           
-            self.projectClientBox.addItems(clients) #clients is a list which has been populated from the init window
-            self.projectClientBox.setEditable(True)
-            self.projectClientBox.setCurrentText(ThisProject_client)# if ThisProject_client != '' else self.projectClientBox.setCurrentText('xxxx')
-            self.projectClientBox.setEnabled(False)#disable the box until you click the edit button
-            self.projectClientBoxEditButton=QPushButton('Edit',self)
-            self.projectClientBoxEditButton.clicked.connect(lambda: self.projectClientBox.setEnabled(True))
-
-            self.projectArchitect= QLabel('Architects:',self)
-            self.projectArchitectBox= QComboBox(self)
-            self.projectArchitectBox.addItems(architects)
-            self.projectArchitectBox.setEditable(True)
-            self.projectArchitectBox.setCurrentText(ThisProject_architect) if ThisProject_architect != '' else self.projectArchitectBox.setCurrentText('')
-            self.projectArchitectBox.setEnabled(False)
-            self.projectArchitectBoxEditButton=QPushButton('Edit',self)
-            self.projectArchitectBoxEditButton.clicked.connect(lambda: self.projectArchitectBox.setEnabled(True))
-
-            # self.projectLocation =  QLabel('Location:',self)
-            # self.projectLocationEdit=QLineEdit(self)
-
-            self.projectStatus =  QLabel('Status:', self)
-            self.projectStatusBox=  QComboBox(self)
-            self.projectStatusBox.addItem("Bid")
-            self.projectStatusBox.addItem("Live")
-            self.projectStatusBox.addItem("Paused")
-            self.projectStatusBox.addItem("Closed")
-            self.projectStatusBox.setEditable(True)
-            self.projectStatusBox.setCurrentText(ThisProject_status)
-            # self.projectStatusBox.setEnabled(False)
-
-            # self.projectSector= QLabel('Sector:',self)
-            # self.projectSectorBox= QComboBox(self)
-
-            # self.projectValue= QLabel('Project Value:', self)
-            # self.projectValueBox=QDoubleSpinBox()
-            # self.projectValueBox.setPrefix('£')
-            # self.projectValueBox.setMaximum(1000000000000)
-            
-            # self.projectFees= QLabel('Fees:', self)
-            # self.projectFeesBox=QDoubleSpinBox()
-            # self.projectFeesBox.setPrefix('£')
-            # self.projectFeesBox.setMaximum(1000000000000)
-
-          #layout
-            self.form= QFormLayout()
-            self.form.addRow(self.DropLogolabel)
-            self.form.addRow(self.infoLabel)
-            self.form.addRow(self.LogosLayout)
-            # self.form.addRow(self.BrowseButton)
-            self.form.addRow(self.projectName, self.projectNameEdit)
-            self.Letter3CodeLayout= QHBoxLayout()
-            self.Letter3CodeLayout.addWidget(self.Letter3CodeEdit)
-            self.Letter3CodeLayout.addWidget(self.Letter3CodeEditButton)
-            self.form.addRow(self.Letter3Code, self.Letter3CodeLayout)
-            self.form.addRow(self.projectNo,self.projectNoEdit)
-            self.ClientLayout= QHBoxLayout()
-            self.ClientLayout.addWidget(self.projectClientBox)
-            self.ClientLayout.addWidget(self.projectClientBoxEditButton)
-            self.form.addRow(self.projectClient, self.ClientLayout)
-            self.ArchitectLayout= QHBoxLayout()
-            self.ArchitectLayout.addWidget(self.projectArchitectBox)
-            self.ArchitectLayout.addWidget(self.projectArchitectBoxEditButton)
-            self.form.addRow(self.projectArchitect,self.ArchitectLayout)
-            
-            # self.form.addRow(self.projectLocation, self.projectLocationEdit)
-            self.form.addRow(self.projectStatus, self.projectStatusBox)
-            # self.form.addRow(self.projectSector, self.projectSectorBox)
-            # self.form.addRow(self.projectValue, self.projectValueBox)
-            # self.form.addRow(self.projectFees, self.projectFeesBox)
-            self.form.setVerticalSpacing(30)
-            self.form.setHorizontalSpacing(30)
-            self.formGroupBox = QGroupBox()
-            self.formGroupBox.setLayout(self.form) 
-            
-            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            buttonBox.accepted.connect(self.funcOK)
-            buttonBox.rejected.connect(self.reject)   
-            
-            mainLayout = QVBoxLayout()
-            mainLayout.addWidget(self.formGroupBox)
-            mainLayout.addWidget(buttonBox)
-            # self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-            self.setLayout(mainLayout)
-            self.setWindowTitle("Admin")
-            self.LogosList.installEventFilter(self)
-            self.installEventFilter(self)
-            
-            QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.LogosList))
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            admindialog.close()
-    
-    def BrowseButtonClicked(self):
-        try:
-            if self.projectClientBox.currentText()!="":
-                root= Tk()
-                root.withdraw()
-                filepath=filedialog.askopenfilename(title='Select Client logo', filetypes=[("image ([png,jfif,jpg,jpeg])", ".png"),("image ([png,jfif,jpg,jpeg])", ".jfif"),("image ([png,jfif,jpg,jpeg])", ".jpg"),("image ([png,jfif,jpg,jpeg])", ".jpeg")])
-                if filepath!='':
-                    if filepath.endswith(".png") or filepath.endswith(".jfif") or filepath.endswith(".jpg") or filepath.endswith("jpeg"):
-                        for file in listdir(ClientsLogos):  # For all img files in the directory
-                            if file.rsplit('.',1)[0]==ThisProject_client :
-                                qm = QMessageBox
-                                ret = qm.question(self,'RCDC', "Logo already exists for this client. \n Would you like to replace logo", qm.Yes | qm.No )
-                                if ret == qm.Yes:
-                                    for i in listdir(ClientsLogos):
-                                        if i.rsplit('.',1)[0]==ThisProject_client:
-                                            remove(ClientsLogos+'\\'+ i)
-                                elif ret== qm.No:
-                                    break
-                        else:
-                            #Copy file to Client logos and set name as client
-                            copyfile(r''+filepath, ClientsLogos + '\\' + ThisProject_client + '.' + filepath.rsplit('.',1)[1])
-                            admindialog.close()
-                            admindialog.__init__()
-                            msg= TimerMsgBox("Logo updated        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon, timeout=1)    
-                            msg.exec()
-                            admindialog.exec()
-                            
-                    else:
-                        MsgBox("Only files with image formats allowed (ico/png/jfif/jpg/jpeg)", setWindowTitle="Invalid format", setIcon = QMessageBox.Critical)
-                # print(filepath)
-            else:
-                MsgBox("To set logo, this project client must be set", setWindowTitle="Client unknown", setIcon = QMessageBox.Information)
-
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def imgdblClicked(self, index):
-        try:
-            if self.projectClientBox.currentText()!="":
-                for file in listdir(ClientsLogos):  # For all img files in the directory
-                    if file.rsplit('.',1)[0]==ThisProject_client :
-                        qm = QMessageBox
-                        ret = qm.question(self,'RCDC', "Logo already exists for this client. \n Would you like to replace logo", qm.Yes | qm.No )
-                        if ret == qm.Yes:
-                            for i in listdir(ClientsLogos):
-                                if i.rsplit('.',1)[0]==ThisProject_client:
-                                    remove(ClientsLogos+'\\'+ i)
-                        elif ret== qm.No:
-                            break
-                else:
-                    #Copy file to Client logos and set name as client
-                    copyfile(r''+index.toolTip(), ClientsLogos + '\\' + ThisProject_client + '.' + index.toolTip().rsplit('.',1)[1])
-                    admindialog.close()
-                    admindialog.__init__()
-                    msg= TimerMsgBox("Logo updated        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon, timeout=1)    
-                    msg.exec()
-                    admindialog.exec()
-            else:
-                MsgBox("To set logo, this project client must be set", setWindowTitle="Client unknown", setIcon = QMessageBox.Information)
-
-                
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def closeEvent(self,event): #Added to clear event because of question mark button weirdness
-        try:
-            self.removeEventFilter(self)
-            super(Admin_Dialog,self).closeEvent(event)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def eventFilter(self, source, event):
-        try:
-            if event.type() == QEvent.EnterWhatsThisMode:
-                QWhatsThis.leaveWhatsThisMode()
-                with open(help_json, 'r') as f:
-                    self.data=json_load(f)
-                # event.ignore()
-                MsgBox(self.data["Admin"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
-                return True
-            #if you right click on a logo, show option -- Delete
-            if event.type() == QEvent.ContextMenu and source ==self.LogosList:
-                if len(source.selectionModel().selectedRows())==1 and source.item([i.row() for i in source.selectionModel().selectedRows()][0]).toolTip()!='':
-                    self.menu = QMenu()
-                    deleteAction = QAction('Delete')
-                    self.menu.addAction(deleteAction)
-                    deleteAction.triggered.connect(lambda: self.delete(source))
-                    self.menu.exec_(event.globalPos())
-                    return True
-
-            if source==self.DropLogolabel:
-                    #if you double click on a label, the logos list shows
-                    if event.type()==QEvent.MouseButtonDblClick and self.LogosList.isHidden():
-                        self.LogosList.show()
-                        self.BrowseButton.show()
-                        #if you drag a logo and drop it on the DropLogo Label, the logo is shown on the Label
-                    elif event.__class__== QDragEnterEvent:
-                        #if an item is dragged 
-                        if len(self.LogosList.selectedItems())>0: # and self.LogosList.item(self.LogosList.count()-1)!=self.LogosList.selectedItems()[0] ):
-                                event.accept()
-                                event.mimeData().setText(self.LogosList.selectedItems()[0].toolTip())
-                                return True
-                    elif event.__class__== QDropEvent: 
-                        if self.projectClientBox.currentText() !="":#check if client not =""
-                            #Check if logo already exists for this client
-                            for file in listdir(ClientsLogos):  # For all img files in the directory
-                                if file.rsplit('.',1)[0]==ThisProject_client :
-                                    qm = QMessageBox
-                                    ret = qm.question(self,'RCDC', "Logo already exists for this client. \n Would you like to replace logo", qm.Yes | qm.No )
-                                    if ret == qm.Yes:
-                                        for i in listdir(ClientsLogos):
-                                            if i.rsplit('.',1)[0]==ThisProject_client:
-                                                remove(ClientsLogos+'\\'+ i)
-                                    elif ret== qm.No:
-                                        break
-                            else:
-                                #Copy file to Client logos and set name as client
-                                copyfile(r''+event.mimeData().text(), ClientsLogos + '\\' + ThisProject_client + '.' + event.mimeData().text().rsplit('.',1)[1])
-                                admindialog.close()
-                                admindialog.__init__()
-                                msg= TimerMsgBox("Logo updated        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon, timeout=1)    
-                                msg.exec()
-                                admindialog.exec()
-                            return True
-                        else:
-                            MsgBox("To set logo, this project client must be set", setWindowTitle="Client unknown", setIcon = QMessageBox.Information)
-
-
-
-            return super().eventFilter(source, event)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def delete(self, tableobj):
-        try:
-            if len([i.row() for i in tableobj.selectionModel().selectedRows()])==1:
-                qm= QMessageBox() #Message box to confirm deletion
-                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete '" + tableobj.item([i.row() for i in tableobj.selectionModel().selectedRows()][0]).toolTip()+ "'?", qm.Yes | qm.No)
-                if ret == qm.Yes:
-                    try:
-                        remove(tableobj.item([i.row() for i in tableobj.selectionModel().selectedRows()][0]).toolTip()) # delete logo
-                        admindialog.close()
-                        admindialog.__init__()
-                        msg= TimerMsgBox("Logo deleted        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon, timeout=1)    
-                        msg.exec()
-                        admindialog.exec()
-                        
-                    except IOError: # ioerror is the error encountered if the drawing isn't able to be deleted because it is open
-                        #If there's error while opening the file, tell user to close the file to continue
-                        MsgBox("Please make sure the file '"+ tableobj.item([i.row() for i in tableobj.selectionModel().selectedRows()][0]).toolTip()+"' isn't open",setWindowTitle="File open", setIcon = QMessageBox.Critical)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def funcOK(self):
-        try:
-             #note: (need to check for files/folder that might might need to be updated if project details is changed)
-            #only update project if any changes was actually made
-            if not(ThisProject_name == self.projectNameEdit.text() and project3name_dict[ThisProject_foldername]== self.Letter3CodeEdit.text() and ThisProject_client==self.projectClientBox.currentText() and ThisProject_status== self.projectStatusBox.currentText() and ThisProject_architect== self.projectArchitectBox.currentText()):
-                createProject=False
-                #Check for the project code
-                projectsWithSameCode=[]
-                for k, v in project3name_dict.items():
-                    if v not in [None, '', 'XXX'] and v== self.Letter3CodeEdit.text() and k!=ThisProject_foldername:
-                        projectsWithSameCode.append(k.split(' - ',1)[1])
-                if len(projectsWithSameCode)>0:
-                    qm = QMessageBox
-                    ret = qm.question(self,'RCDC',"The project code '"+ self.Letter3CodeEdit.text() +"' already exists for the following projects:\n\n"+'\n'.join(projectsWithSameCode)+"\n\nDo you wish to continue and create a new project with same code (different project number)", qm.Yes | qm.No | qm.Cancel)
-                    if ret == qm.Yes:
-                        createProject=True
-                else:
-                    createProject=True
-                if createProject:   
-                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Central_Database_accdb+';'#Connect to the Central database
-                    conn = pyodbc_connect(con_string)
-                    cursor =conn.cursor()   #Update the project details  
-                    values= (self.projectNameEdit.text(),self.Letter3CodeEdit.text(),self.projectClientBox.currentText(),self.projectStatusBox.currentText(),self.projectArchitectBox.currentText(),ThisProject_no)               
-                    cursor.execute("UPDATE ProjectList SET ProjectName= ?, ProjectCode= ?, Client= ?, Status= ?, Architect= ? WHERE ProjectNo= ?", values )
-                    conn.commit()#Save the changes
-                    cursor.close()
-                    conn.close()#Close cursor and connection
-                
-                    #Populate the Issue sheet template
-                    if not(ThisProject_name == self.projectNameEdit.text() and ThisProject_client==self.projectClientBox.currentText()):
-                        issuesheetFile = ProjectIssueSheet#issue sheet name
-                        if path.exists(issuesheetFile) == True:
-                            while True:
-                                try:
-                                    wb= load_workbook(filename=issuesheetFile, read_only=False)
-                                    self.sheet_name=wb['Sheet1'] #Sheet name
-                                    self.sheet_name['B2']=self.projectNameEdit.text()
-                                    self.sheet_name['B3']=self.projectClientBox.currentText()
-                                    # self.sheet_name['B4']=int(self.projectNoEdit.text())
-                                    wb.save(issuesheetFile)#save the file
-                                    wb.close()#close the file
-                                    break
-                                except IOError:
-                                    MsgBox(issuesheetFile+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Issue sheet file open",setIcon=QMessageBox.Critical)
-                        else:
-                            MsgBox("Tried modifying changes in the issue sheet file\n\n Couldn't find '"+issuesheetFile+"'", setWindowTitle="Error",setIcon = QMessageBox.Critical)
-                        
-                    #Go back to the main window after refreshing with new project
-                    admindialog.close()
-
-                    refreshMainWindow()
-                    widget.removeWidget(projectwindow)
-                    projectwindow.__init__()
-                    widget.addWidget(projectwindow) 
-                    widget.setCurrentWidget(projectwindow)
-
-                    #Notify that the project has been successfully created
-                    msg= TimerMsgBox("Project updated        \n\nNote: Currently, changes made to the project doesn't update in any previously created files except for the issue sheet",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
-                    msg.exec_()
-            else:
-               MsgBox("No changes noticed\n\nNote: Updating a logo doesn't require you to click the OK button",setWindowTitle="   ", setIcon = QMessageBox.Information)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
 class TimerMsgBox(QMessageBox):
     def __init__(self, text, setWindowTitle="", setIcon=None, setIconPixmap =None, setWindowIcon=None, timeout=2, parent=None):
         super(TimerMsgBox, self).__init__(parent)
@@ -12308,11 +12348,12 @@ class QTableWidget(QTableWidget):
         self.setStyleSheet("QTableWidget::item:selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8); border-bottom: 1px solid #eeeeee;}")
         self.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
+        self.columnLabels = []
+
 class CheckableComboBox(QComboBox):
     def __init__(self):
         try:
             super(CheckableComboBox, self).__init__()
-            # self.view().pressed.connect(self.handleItemPressed)
             self.view().viewport().installEventFilter(self)
             self.ctrlPressed = False
             self.ctrlShiftPressed = False
@@ -12323,6 +12364,7 @@ class CheckableComboBox(QComboBox):
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     def handleItemPressed(self, index):
         try:
+            if index.row() == 0: return
             #Block the signal so that the checkable item doesn't get checked/unchecked when clicked
             self.blockSignals(True)
             item = self.model().itemFromIndex(index)
@@ -12362,6 +12404,11 @@ class CheckableComboBox(QComboBox):
                         item.setCheckState(Qt.Checked)
                         self.checkedItems.add(index.row())
                 self.lastCheckedIndex = index
+                fullcheckedtext= ', '.join([self.itemText(i) for i in self.checkedItems])
+                # if len(fullcheckedtext)>75:
+                #     fullcheckedtext=fullcheckedtext[:37]+'...'+fullcheckedtext[-37:]
+                self.setItemText(0, fullcheckedtext)
+
             self.blockSignals(False)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -12652,8 +12699,6 @@ class FileExplorerTable(QTableWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-
-
 if __name__ == "__main__":
         # import sys
         # # Handle high resolution displays:
@@ -12750,6 +12795,7 @@ if __name__ == "__main__":
             # BackgroundA1_Temp=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\RCDC - A1 Background Template.pdf"
             A3ReportTemp= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Report Templates\A3 Report Template.docx"
             A4ReportTemp= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Report Templates\Report Template.docx"
+            SiteVisitReportTemp= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Report Templates\Site Visit Report.docx"
             FeeProposalTemp= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Report Templates\Fee Proposal Report Template.docx"
             CalcsTempFolder= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Calcs Templates"
             SpecsTempFolder= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Specs Templates"
@@ -12764,6 +12810,7 @@ if __name__ == "__main__":
             homedir_icon =userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\homedir_icon.png"
             finance_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\financeicon.ico"
             newaction_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\actionicon.ico"
+            edit_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\editicon.ico"
             approval_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\approval_icon.ico"
             changeadmin_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\changeadmin_icon.ico"
             home_icon= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\homeicon.ico"
@@ -12839,6 +12886,11 @@ if __name__ == "__main__":
             # widget.setCurrentWidget(drawingwindow)
             # newdrawingdialog=NewDrawing_Dialog(toRemove="2d Drawing")
             # newdrawingdialog.show()
+
+            # reportswindow=ReportsPresMemosWindow()
+            # widget.addWidget(reportswindow)
+            # widget.setCurrentWidget(reportswindow)
+
 
             # issueswindow=IssuesWindow()
             # widget.addWidget(issueswindow)
