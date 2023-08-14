@@ -203,14 +203,23 @@ def refreshMainWindow():
         actionsfiltertext=initwindow.actionsWidget.actionsUserBox.currentText()
         actionsProjecttext=initwindow.actionsWidget.actionsProjectBox.currentText()
 
-        projectfilterOptions=initwindow.projectsWidget.projectfilterOptions.currentText()
+        projectfilterOptions= [initwindow.projectsWidget.projectfilterOptions.itemText(i) for i in initwindow.projectsWidget.projectfilterOptions.checkedItems]
         currenttab=initwindow.Page.currentIndex()
         widget.removeWidget(initwindow)
         initwindow.__init__()
         initwindow.actionsWidget.actionsUserBox.setCurrentText(actionsfiltertext)
         initwindow.actionsWidget.actionsProjectBox.setCurrentText(actionsProjecttext)
 
-        initwindow.projectsWidget.projectfilterOptions.setCurrentText(projectfilterOptions)
+        for i in range(1,initwindow.projectsWidget.projectfilterOptions.count()):
+            if initwindow.projectsWidget.projectfilterOptions.itemText(i) in projectfilterOptions:
+                initwindow.projectsWidget.projectfilterOptions.model().item(i).setCheckState(Qt.Checked)
+                initwindow.projectsWidget.projectfilterOptions.checkedItems.add(i)
+            else:
+                initwindow.projectsWidget.projectfilterOptions.model().item(i).setCheckState(Qt.Unchecked)
+                if i in initwindow.projectsWidget.projectfilterOptions.checkedItems: initwindow.projectsWidget.projectfilterOptions.checkedItems.remove(i)
+        initwindow.projectsWidget.projectfilterOptions.setItemText(0,', '.join(projectfilterOptions))
+        initwindow.projectsWidget.projectfilterOptions.hidePopup()
+        
         initwindow.Page.setCurrentIndex(currenttab)
         widget.addWidget(initwindow) 
     except :
@@ -260,9 +269,9 @@ class Admin_Dialog(QDialog):
             self.DropLogolabel.setAcceptDrops(True)#Enable drops onto the label
             self.DropLogolabel.installEventFilter(self)
             # self.DropLogolabel.mouseDoubleClickEvent
-            self.infoLabel= QLabel("To change logo double click on the logo",self)
-            self.infoLabel.setStyleSheet("QLabel{font:12px; color:red;}")
-            self.infoLabel.hide()
+            # self.infoLabel= QLabel("To change logo double click on the logo",self)
+            # self.infoLabel.setStyleSheet("QLabel{font:12px; color:red;}")
+            # self.infoLabel.hide()
 
           #Create a list widget and populate all existing clients logos 
             self.LogosList= QListWidget()
@@ -276,6 +285,10 @@ class Admin_Dialog(QDialog):
             self.LogosLayout.addWidget(self.BrowseButton)
             self.LogosLayout.setSpacing(5)
 
+            self.changeLogoButton=QPushButton("Change Logo")
+            # self.changeLogoButton.setMaximumWidth(120)
+            self.changeLogoButton.clicked.connect(self.changeLogoButtonClicked)
+            self.changeLogoButton.hide()
             if path.exists(ClientsLogos):#The ClientsLogos is a path to where the logos are stored, it is set at the bottom of the page under the if__name__==__main__ statement
                 for file in listdir(ClientsLogos):  # For all img files in the directory
                     if file.endswith(".png") or file.endswith(".jfif") or file.endswith(".jpg") or file.endswith("jpeg"):
@@ -284,13 +297,12 @@ class Admin_Dialog(QDialog):
                             self.DropLogolabel.setToolTip(path.join(ClientsLogos, file)) # Set the label tool tip to image fullpath
                             self.LogosList.hide()#Hide logos  list since this project has a set logo
                             self.BrowseButton.hide()
-                            self.infoLabel.show()
+                            self.changeLogoButton.show()
                         item= QListWidgetItem()
                         icon = QIcon()
                         icon.addPixmap(QPixmap(path.join(ClientsLogos, file)), QIcon.Normal, QIcon.Off)
                         item.setIcon(icon)
                         item.setToolTip(path.join(ClientsLogos, file))
-
                         self.LogosList.addItem(item)#Add all images in folder to the logos list
                 # item= QListWidgetItem()
                 # icon = QIcon()
@@ -299,6 +311,7 @@ class Admin_Dialog(QDialog):
                 # self.LogosList.addItem(item)
             else:
                 self.LogosList.addItem("Path '" +ClientsLogos + "' not found")
+                self.changeLogoButton.hide()
 
           #Create labels and input boxes
             self.projectNameEdit= QLineEdit()
@@ -350,12 +363,18 @@ class Admin_Dialog(QDialog):
             self.projectLeadBox.setCurrentText(self.this_projectlead)
 
             count=1
-            self.projectTeamBox= CheckableComboBox()
+            self.projectTeamBox= CheckableComboBox('Project TeamBox')
             self.projectTeamBox.addItem("")
+            teamList=self.this_projectteam.split(', ')
             for employee in RCDC_employees:
                 self.projectTeamBox.addItem(employee)
-                self.projectTeamBox.model().item(count).setCheckState(Qt.Unchecked)
+                if employee in teamList:
+                    self.projectTeamBox.model().item(count).setCheckState(Qt.Checked)
+                    self.projectTeamBox.checkedItems.add(count)
+                else:
+                    self.projectTeamBox.model().item(count).setCheckState(Qt.Unchecked)
                 count+=1
+            self.projectTeamBox.setItemText(0,', '.join(teamList))
 
             # self.projectStatusBox.setEnabled(False)
 
@@ -375,8 +394,12 @@ class Admin_Dialog(QDialog):
           #Layout
             self.form= QFormLayout()
             self.form.addRow(self.DropLogolabel)
-            self.form.addRow(self.infoLabel)
+            # self.form.addRow(self.infoLabel)
             self.form.addRow(self.LogosLayout)
+            tempLayout=QHBoxLayout()
+            tempLayout.addStretch()
+            tempLayout.addWidget(self.changeLogoButton)
+            self.form.addRow(tempLayout)
             # self.form.addRow(self.BrowseButton)
             self.form.addRow("Project Name", self.projectNameEdit)
             self.form.addRow("3 Letter Code", self.Letter3CodeEdit)
@@ -487,6 +510,14 @@ class Admin_Dialog(QDialog):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
+    def changeLogoButtonClicked(self):
+        try:
+            self.LogosList.show()
+            self.BrowseButton.show()
+            self.changeLogoButton.hide()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
     def eventFilter(self, source, event):
         try:
             if event.type() == QEvent.EnterWhatsThisMode:
@@ -507,12 +538,10 @@ class Admin_Dialog(QDialog):
                     return True
 
             if source==self.DropLogolabel:
-                    #if you double click on a label, the logos list shows
-                    if event.type()==QEvent.MouseButtonDblClick and self.LogosList.isHidden():
-                        self.LogosList.show()
-                        self.BrowseButton.show()
-                        #if you drag a logo and drop it on the DropLogo Label, the logo is shown on the Label
-                    elif event.__class__== QDragEnterEvent:
+                    # #if you double click on a label, the logos list shows
+                    # if event.type()==QEvent.MouseButtonDblClick and self.LogosList.isHidden():
+                    #if you drag a logo and drop it on the DropLogo Label, the logo is shown on the Label
+                    if event.__class__== QDragEnterEvent:
                         #if an item is dragged 
                         if len(self.LogosList.selectedItems())>0: # and self.LogosList.item(self.LogosList.count()-1)!=self.LogosList.selectedItems()[0] ):
                                 event.accept()
@@ -574,7 +603,7 @@ class Admin_Dialog(QDialog):
             if self.this_project3lettercode!=self.Letter3CodeEdit.text() or self.this_projectclient!=self.projectClientBox.currentText() or self.this_projectarchitect!=self.projectArchitectBox.currentText() \
                 or self.this_projectstatus!=self.projectStatusBox.currentText() or  self.this_projectstage!=self.projectStageBox.currentText() or self.this_projectlead!=self.projectLeadBox.currentText():
                 return True
-            teammembers= ','.join([self.projectTeamBox.itemText(i) for i in self.projectTeamBox.checkedItems])
+            teammembers= ', '.join([self.projectTeamBox.itemText(i) for i in self.projectTeamBox.checkedItems])
             if teammembers!=self.this_projectteam:
                 return True
             
@@ -601,7 +630,7 @@ class Admin_Dialog(QDialog):
                 else:
                     createProject=True
                 if createProject:   
-                    teammembers= ','.join([self.projectTeamBox.itemText(i) for i in self.projectTeamBox.checkedItems])
+                    teammembers= ', '.join([self.projectTeamBox.itemText(i) for i in self.projectTeamBox.checkedItems])
                     con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Central_Database_accdb+';'#Connect to the Central database
                     conn = pyodbc_connect(con_string)
                     cursor =conn.cursor()   #Update the project details  
@@ -644,7 +673,8 @@ class Admin_Dialog(QDialog):
                     msg= TimerMsgBox("Project updated        \n\nNote: Currently, changes made to the project doesn't update in any previously created files except for the issue sheet",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
                     msg.exec_()
             else:
-               MsgBox("No changes noticed\n\nNote: Updating a logo doesn't require you to click the OK button",setWindowTitle="   ", setIcon = QMessageBox.Information)
+                self.close()
+                # MsgBox("No changes noticed\n\nNote: Updating a logo doesn't require you to click the OK button",setWindowTitle="   ", setIcon = QMessageBox.Information)
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -723,9 +753,13 @@ class ProjectsWidget(QWidget):
             self.project_search = QLineEdit()
             self.project_search.setPlaceholderText("Search")
             self.project_search.setMaximumSize(400,28)
-            self.projectfilterOptions=  QComboBox()
-            self.projectfilterOptions.addItems(["All projects", "Live projects","Bid projects", "Paused projects", "Closed projects","OLD projects"])
-            self.projectfilterOptions.currentTextChanged.connect(self.statusDropdown_change)#Connecting the change in the drop-down to its function
+            self.projectfilterOptions=CheckableComboBox("Projects Filter")
+            self.projectfilterOptions.addItem("")
+            # self.projectfilterOptions=QComboBox()
+
+            self.projectfilterOptions.addItems(["All", "Live","Bid", "Paused", "Closed","OLD"])
+            for i in range(1, self.projectfilterOptions.count()): self.projectfilterOptions.model().item(i).setCheckState(Qt.Unchecked)
+            # self.projectfilterOptions.currentTextChanged.connect(lambda: self.projectStatusChanged(self.projectfilterOptions.checkedText))#Connecting the change in the drop-down to its function
             self.project_search.setStyleSheet("padding-left:20px;")
             self.projectfilterOptions.setStyleSheet("QComboBox{padding-left:20px;}")
 
@@ -885,8 +919,7 @@ class ProjectsWidget(QWidget):
             self.projectInfoTabWidget.addTab(QWidget(),"Actions")
             # self.projectInfoTabWidget.setTabPosition(QTabWidget.West)
 
-            #Page Layouts
-            self.projectfilterOptions.setCurrentText("Live projects")
+          #Page Layouts
             
             projectsLayout=QVBoxLayout()
             # projectsLayout.addWidget(self.ChangeStartTimeButton, 0, 1, Qt.AlignRight)
@@ -921,12 +954,15 @@ class ProjectsWidget(QWidget):
             self.OptionsLayout.addStretch(1)
             self.OptionsLayout.addWidget(self.UserProfileButton)         
             self.OptionsLayout.addStretch(1)
-            
             FullLayout=QVBoxLayout()
             FullLayout.addLayout(self.OptionsLayout)
             FullLayout.addLayout(MainLayout)  
             self.setLayout(FullLayout)
-        
+            self.projectfilterOptions.model().item(self.projectfilterOptions.findText("Live")).setCheckState(Qt.Checked)
+            self.projectfilterOptions.checkedItems.add(self.projectfilterOptions.findText("Live"))
+            self.projectfilterOptions.setItemText(0,"Live")
+            self.projectfilterOptions.hidePopup()
+
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
@@ -951,19 +987,18 @@ class ProjectsWidget(QWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    def statusDropdown_change(self,currentText):
+    def projectStatusChanged(self,statusList):
         try:
             #empty search box
             self.project_search.blockSignals(True)
             self.project_search.setText("")
             self.project_search.blockSignals(False)
             #Show projects that match the selected index in the status dropdown
-            stats=currentText.replace(" projects","")
             for row in range(projectsTable.rowCount()):
                 projectsTable.setRowHidden(row, False) 
-                if stats=="All":
+                if "All" in statusList:
                     continue
-                if projectsTable.item(row,projectsTable.columnLabels.index("Status")).text() != stats:
+                if projectsTable.item(row,projectsTable.columnLabels.index("Status")).text() not in statusList:
                     projectsTable.setRowHidden(row, True)
             #select the first visible row
             for row in range(projectsTable.rowCount()):
@@ -1350,7 +1385,6 @@ class ActionsTable(QTableWidget):
                         self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For"),QTableWidgetItem(usr_actions[d]["ActionFor"]))
                         self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setData(256,usr_actions[d]["filename"])
                         if "ActionBy" in usr_actions[d]: self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setData(257,usr_actions[d]["ActionBy"])
-
 
                         self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Project"),QTableWidgetItem(usr_actions[d]["Project"].split(' - ',1)[1]))
                         self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Project")).setData(256,usr_actions[d]["Project"])
@@ -1830,7 +1864,7 @@ class ActionsTable(QTableWidget):
                 DeadlineLayout.addWidget(DueDateEdit)
 
                 self.WeekCheck= QCheckBox(text="Assign to a specific week")
-                dialog.WeekBox=CheckableComboBox()
+                dialog.WeekBox=CheckableComboBox('Action WeekBox')
                 dialog.WeekBox.setEnabled(False)
                 self.WeekCheck.stateChanged.connect(lambda: self.WeekChecked(dialog))
                 dialog.WeekBox.addItem("")
@@ -1838,7 +1872,9 @@ class ActionsTable(QTableWidget):
 
                 #Add past weeks to the combo box
                 foundWeeks= self.item(r,self.columnLabels.index("Action")).data(256)
+                
                 if foundWeeks!=None:
+                    foundWeeks=dict(sorted(foundWeeks.items(), key=lambda lst: datetime.strptime(lst[0], "%d/%m/%Y")))
                     self.WeekCheck.setChecked(True)
                     #Add past weeks to the combo box
                     for wk in foundWeeks:
@@ -2063,6 +2099,7 @@ class ActionsTable(QTableWidget):
                     deleteButton.clicked.connect(lambda state, gridrow=row, tablerow=r: removeRow(gridrow, tablerow))
                     grid.addWidget(deleteButton,row,4)
                 else:
+                    selectedActions[r]["hrs"].setReadOnly(True)
                     selectedActions[r]["notes"].setReadOnly(True)
                     
                 row+=1
@@ -2828,7 +2865,7 @@ class NewAction_Dialog(QDialog):
 
             self.WeekCheck= QCheckBox(text="Assign to a specific week")
             
-            self.WeekBox=CheckableComboBox()
+            self.WeekBox=CheckableComboBox("Action WeekBox")
             # currentweek=QDate.currentDate().weekNumber()
             # print(currentweek)
             # Get start of current week
@@ -3607,7 +3644,8 @@ class Init_Window(QMainWindow):
             for tbl,filter in {projectsTable:self.projectsWidget.projectfilterOptions,self.actionsWidget.actionTable:self.actionsWidget.actionsUserBox}.items():
                 if tableobj==tbl:
                     filter.blockSignals(True)
-                    filter.setCurrentIndex(0)
+                    if filter==self.actionsWidget.actionsUserBox: filter.setCurrentIndex(0)
+                    if filter==self.projectsWidget.projectfilterOptions: filter.model().item(self.projectsWidget.projectfilterOptions.findText("All")).setCheckState(Qt.Checked)
                     filter.blockSignals(False)
             if editbox.text()=='':
                 #if search box is empty, show all items in table
@@ -12351,15 +12389,17 @@ class QTableWidget(QTableWidget):
         self.columnLabels = []
 
 class CheckableComboBox(QComboBox):
-    def __init__(self):
+    def __init__(self, objectName):
         try:
             super(CheckableComboBox, self).__init__()
+            self.setObjectName(objectName)
             self.view().viewport().installEventFilter(self)
             self.ctrlPressed = False
             self.ctrlShiftPressed = False
             self.shiftPressed = False
             self.lastCheckedIndex = None
             self.checkedItems= set()
+            self.checkedText = set()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     def handleItemPressed(self, index):
@@ -12394,21 +12434,43 @@ class CheckableComboBox(QComboBox):
                         # for i in self.checkedItems:
                         #     self.model().item(i).setCheckState(Qt.Checked)
                 else:
-                    for i in self.checkedItems:
-                        if i!=index.row() and self.model().item(i).checkState()==Qt.Checked:
-                            self.model().item(i).setCheckState(Qt.Unchecked)
-                    self.checkedItems=set()
+                    # for i in self.checkedItems:
+                    #     if i!=index.row() and self.model().item(i).checkState()==Qt.Checked:
+                    #         self.model().item(i).setCheckState(Qt.Unchecked)
+                    # self.checkedItems=set()
                     if item.checkState() == Qt.Checked:
                         item.setCheckState(Qt.Unchecked)
+                        self.checkedItems.remove(index.row())
                     else:
                         item.setCheckState(Qt.Checked)
                         self.checkedItems.add(index.row())
                 self.lastCheckedIndex = index
-                fullcheckedtext= ', '.join([self.itemText(i) for i in self.checkedItems])
                 # if len(fullcheckedtext)>75:
                 #     fullcheckedtext=fullcheckedtext[:37]+'...'+fullcheckedtext[-37:]
-                self.setItemText(0, fullcheckedtext)
 
+                #this is an exception for the Projects filter boxstat
+                if self.objectName()=="Projects Filter":
+                    #check if index of 'All' is in the box
+                    allindex=self.findText("All")
+                    if allindex==index.row(): #if 'All' is checked
+                        if self.model().item(allindex).checkState()==Qt.Checked:
+                            for i in range(1,self.count()):  #check all items 
+                                self.model().item(i).setCheckState(Qt.Checked)
+                                self.checkedItems.add(i)
+                        elif index.row()==allindex and item.checkState()==Qt.Unchecked: #if 'All' is unchecked
+                            for i in range(1,self.count()): #uncheck all items
+                                self.model().item(i).setCheckState(Qt.Unchecked)
+                                if i in self.checkedItems: self.checkedItems.remove(i)
+                    if len(self.checkedItems)<=self.count()-2: #if all items, check 'All'
+                        #if not all items, uncheck 'All'
+                        self.model().item(allindex).setCheckState(Qt.Unchecked)
+                        if allindex in self.checkedItems: self.checkedItems.remove(allindex)
+                    else: 
+                        self.model().item(allindex).setCheckState(Qt.Checked)
+                        self.checkedItems.add(allindex)
+                self.checkedText ={self.itemText(i) for i in self.checkedItems}
+                fullcheckedtext=' '+ ', '.join(self.checkedText)
+                self.setItemText(0, fullcheckedtext)
             self.blockSignals(False)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -12441,11 +12503,17 @@ class CheckableComboBox(QComboBox):
             self.ctrlPressed = False
             self.ctrlShiftPressed = False
             self.shiftPressed = False
-            #set the parent class to the NewAction_Dialog class
-            parentclass=self.parent().parent().parent().parent() if (self.parent() and self.parent().parent() and self.parent().parent().parent() and self.parent().parent().parent()) else None
-            parentclass= self.parent() if ((parentclass==None or parentclass.__class__.__name__!="NewAction_Dialog") and self.parent() and self.parent().windowTitle()=="Edit Action") else parentclass
-            if parentclass != None :
-                NewAction_Dialog.checkBoxhidePop(parentclass.weeksData,parentclass.weeksGrid, parentclass.WeekBox,parentclass.HoursRequiredBox, parentclass.MinutesRequiredBox)
+            
+            if self.objectName()=="Action WeekBox":
+                #set the parent class to the NewAction_Dialog class
+                parentclass=self.parent().parent().parent().parent() if (self.parent() and self.parent().parent() and self.parent().parent().parent() and self.parent().parent().parent()) else None
+                parentclass= self.parent() if ((parentclass==None or parentclass.__class__.__name__!="NewAction_Dialog") and self.parent() and self.parent().windowTitle()=="Edit Action") else parentclass
+                if parentclass != None:
+                    NewAction_Dialog.checkBoxhidePop(parentclass.weeksData,parentclass.weeksGrid, parentclass.WeekBox,parentclass.HoursRequiredBox, parentclass.MinutesRequiredBox)
+            elif self.objectName()=="Projects Filter":
+                #call the status filter function
+                if self.parent() and self.parent().__class__.__name__=="ProjectsWidget":
+                    self.parent().projectStatusChanged([self.itemText(i) for i in self.checkedItems])
             # self.lastCheckedIndex = None
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
