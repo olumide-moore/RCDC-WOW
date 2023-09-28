@@ -172,7 +172,6 @@ def storeDeletedActions(filepath,usr):
             deletedData.append(data)
         with open(users_jsons+"\\"+usr+"\\SS\\Deleted Actions\\Actions.json",'w') as json_file:
             json_dump(deletedData,json_file,indent=4)
-
     except:
         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -230,7 +229,6 @@ def readPDFXref(Src, xrefBoxSubject):
                 if RECT.info['subject']==xrefBoxSubject:
                     return RECT.info['content']
         return None
-                
     except :
         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -1076,7 +1074,6 @@ class ProjectsWidget(QWidget):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    
     def setProjectsCount(self):
         try:
             text= f"<b>Count: {projectsTable.projectsCount}</b>"
@@ -1400,7 +1397,7 @@ class ProjectsDeadlineWidget(QWidget):
             self.deadlineTable.verticalHeader().setVisible(False)
             self.deadlineTable.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.deadlineTable.itemDoubleClicked.connect(self.deadlineTableDblClicked)
-            self.deadlineTable.setSortingEnabled(True)
+            # self.deadlineTable.setSortingEnabled(True)
 
             MainLayout=QVBoxLayout()
             MainLayout.addWidget(self.NewDeadlineButton)
@@ -1442,22 +1439,25 @@ class ProjectsDeadlineWidget(QWidget):
                         activity=json_load(f)
                         activity["filename"]=activityfile
                         self.activeActivities.append(activity)
+                self.activeActivities.sort(key=lambda x: datetime.strptime(x["Deadline"], "%d/%m/%Y"))
                 self.deadlineTable.setColumnCount(len(self.columnLabels))
                 self.deadlineTable.setHorizontalHeaderLabels(self.columnLabels)
-                for activity in self.activeActivities:
-                    self.deadlineTable.insertRow(self.deadlineTable.rowCount())
-                    self.deadlineTable.setItem(self.deadlineTable.rowCount()-1,self.columnLabels.index("Activity"),QTableWidgetItem(activity["Activity"]))
-                    self.deadlineTable.item(self.deadlineTable.rowCount()-1,self.columnLabels.index("Activity")).setToolTip(activity["Activity"])
-                    self.deadlineTable.item(self.deadlineTable.rowCount()-1,self.columnLabels.index("Activity")).setData(256, activity["filename"])
+                self.deadlineTable.setRowCount(len(self.activeActivities))
+                for row in range(len(self.activeActivities)):
+                    item=QTableWidgetItem(self.activeActivities[row]["Activity"])
+                    item.setToolTip(self.activeActivities[row]["Activity"])
+                    item.setData(256, self.activeActivities[row]["filename"])
+                    self.deadlineTable.setItem(row,self.columnLabels.index("Activity"),item)
 
-                    # self.deadlineTable.setItem(self.deadlineTable.rowCount()-1,self.columnLabels.index("Hours"),QTableWidgetItem(str(activity["Hours"])+"hrs"))
-                    activitydeadline=activity["Deadline"]
+                    # self.deadlineTable.setItem(row,self.columnLabels.index("Hours"),QTableWidgetItem(str(activity["Hours"])+"hrs"))
+                    activitydeadline=self.activeActivities[row]["Deadline"]
                     if activitydeadline not in ["",None]:
-                        self.deadlineTable.setItem(self.deadlineTable.rowCount()-1,self.columnLabels.index("Deadline"),QTableWidgetItem(activitydeadline))
-                        self.deadlineTable.item(self.deadlineTable.rowCount()-1,self.columnLabels.index("Deadline")).setData(Qt.DisplayRole, QDate(int(activitydeadline.split("/")[2]),int(activitydeadline.split("/")[1]),int(activitydeadline.split("/")[0])))
-                        # print(activitydeadline)
-                    # self.deadlineTable.setItem(self.deadlineTable.rowCount()-1,self.columnLabels.index("Status"),QTableWidgetItem(activity["Status"])
-
+                        deadlineitem=QTableWidgetItem(activitydeadline)
+                        self.deadlineTable.setItem(row,self.columnLabels.index("Deadline"),deadlineitem)
+                        # self.deadlineTable.item(row,self.columnLabels.index("Deadline")).setData(Qt.DisplayRole, QDate(int(activitydeadline.split("/")[2]),int(activitydeadline.split("/")[1]),int(activitydeadline.split("/")[0])))
+                        # print(f"{self.activeActivities[row]['Activity']} {activitydeadline}")
+                    # self.deadlineTable.setItem(row,self.columnLabels.index("Status"),QTableWidgetItem(self.activeActivities[row]["Status"])
+                
                 self.NewDeadlineButton.setEnabled(True)
                 self.deadlineTable.installEventFilter(self)
             else:
@@ -1521,13 +1521,17 @@ class ProjectsDeadlineWidget(QWidget):
             self.dateEdit.setCalendarPopup(True)
             # self.dateEdit.setStyleSheet("QDateEdit{border:1px solid #90a9c6; border-radius:4px;}")
             self.newdialog=QDialog()
- 
-            if index!=None:
+
+
+            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttonBox.rejected.connect(self.newdialog.reject)
+            if index!=None: #if the user is editing an existing deadline
                 self.deadlineEdit.setText(self.deadlineTable.item(index,self.columnLabels.index("Activity")).text())
                 self.dateEdit.setDate(QDate.fromString(self.deadlineTable.item(index,self.columnLabels.index("Deadline")).text(), "dd/MM/yyyy"))
-            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            buttonBox.accepted.connect(self.funcOK)
-            buttonBox.rejected.connect(self.newdialog.reject)
+                buttonBox.accepted.connect(lambda: self.funcOK(index))
+            else:
+                buttonBox.accepted.connect(self.funcOK)
+
             form=QFormLayout()
             form.addRow(self.deadlineEdit)
             form.addRow("Deadline date",self.dateEdit)
@@ -1541,16 +1545,19 @@ class ProjectsDeadlineWidget(QWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    def funcOK(self):
+    def funcOK(self, index=None):
         try:
             if self.deadlineEdit.toPlainText().strip()!="":
-                if path.exists(self.projectadminfolder+"\\Activities")==False:
-                    mkdir(self.projectadminfolder+"\\Activities")
-                #create activity file
-                count=1
-                while path.exists(self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"):
-                    count+=1
-                activityfile=self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"
+                if index:
+                    activityfile=self.projectadminfolder+"\\Activities\\"+self.deadlineTable.item(index,self.columnLabels.index("Activity")).data(256)
+                else:
+                    if path.exists(self.projectadminfolder+"\\Activities")==False:
+                        mkdir(self.projectadminfolder+"\\Activities")
+                    #create activity file
+                    count=1
+                    while path.exists(self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"):
+                        count+=1
+                    activityfile=self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"
                 with open(activityfile, 'w') as f: #create activity file
                     obj= {
                         "Activity": self.deadlineEdit.toPlainText().strip(),
@@ -11321,8 +11328,12 @@ class ReportsPresMemosWindow(QMainWindow):
             if path.exists(Project_Database):
                 QShortcut(QKeySequence('Ctrl+R'),self).activated.connect(self.NewReportsClicked)
                 QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.ReportsTable))
+
                 self.ReportsTable.itemDoubleClicked.connect(lambda: self.openfile(self.ReportsTable))
                 self.ReportsTable.installEventFilter(self)
+
+                self.previousReportName=None
+                QShortcut(QKeySequence('F2'),self).activated.connect(lambda: self.renamefile(self.ReportsTable))
                 con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
                 conn = pyodbc_connect(con_string)
                 cursor =conn.cursor()            
@@ -11340,6 +11351,7 @@ class ReportsPresMemosWindow(QMainWindow):
                         ReportSeqNoDict[data[d].Ref]= int(data[d].SeqNo)
                 cursor.close()
                 conn.close()
+                self.ReportsTable.cellChanged.connect(self.fileRenamed)
             else:
                 self.ReportsTable.setRowCount(1)
                 self.ReportsTable.setItem(0, 0,QTableWidgetItem("No PROJECT ADMIN DATABASE found"))
@@ -11416,9 +11428,11 @@ class ReportsPresMemosWindow(QMainWindow):
     def eventFilter(self, source, event): 
         try:
             if event.type() == QEvent.ContextMenu and source in [self.ReportsTable]:
-                if len(source.selectionModel().selectedRows())>0:
+                selectedrows = [i.row() for i in source.selectionModel().selectedRows(0) if (source.isRowHidden(i.row())==False)]
+                if len(selectedrows)>0:
                     menu = QMenu(self)
                     menu.addAction("Open", lambda: self.openfile(source))
+                    if len(selectedrows)==1:   menu.addAction("Rename", lambda: self.renamefile(source))
                     menu.addAction("Delete", lambda: self.delete(source))
                     menu.exec_(event.globalPos())
                     return True
@@ -11508,6 +11522,66 @@ class ReportsPresMemosWindow(QMainWindow):
                 else:
                     MsgBox(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
         except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def renamefile(self, tableobj):
+        try:
+            if tableobj == self.ReportsTable:
+                selectedrows = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
+                if len(selectedrows)==1:
+                    row=selectedrows[0]
+                    #allow user to edit the cell
+                    #dynamically allow user to edit the cell
+                    # tableobj.setEditTriggers(QAbstractItemView.AllEditTriggers)
+                    self.previousReportName=tableobj.item(row,1).text()
+                    tableobj.editItem(tableobj.item(row,1))
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+   
+    def fileRenamed(self, row, col):
+        try:
+            reportRef=self.ReportsTable.item(row,0).text()
+            newReportName=self.ReportsTable.item(row,1).text()
+            if newReportName:
+                if newReportName!=self.previousReportName:
+                    oldfullpath=ProjectReportFolder+'\\'+reportRef+ " - "+self.previousReportName+".docx"
+                    newfullpath=ProjectReportFolder+'\\'+reportRef+ " - "+newReportName+".docx"
+                    #Update the database
+                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
+                    conn = pyodbc_connect(con_string)
+                    cursor =conn.cursor()   #Update the project details  
+                    values= (newReportName, reportRef+" - "+self.previousReportName)               
+                    cursor.execute("UPDATE Reports SET PostName= ? WHERE FullName= ?", values )
+                    conn.commit()#Save the changes
+                    cursor.close()
+                    conn.close()#Close cursor and connection
+                    #Rename the file and edit the file
+                    if path.exists(oldfullpath):
+                        while True:
+                            try:
+                                rename(oldfullpath, newfullpath)
+                                doc=docx.Document(newfullpath)
+                                for par in doc.paragraphs:
+                                    if self.previousReportName in par.text:
+                                        replaceRunInParagraph(par,self.previousReportName,newReportName)
+                                for table in doc.tables:
+                                    for row in table.rows:
+                                        for cell in row.cells:  
+                                            if cell.text=="Report Title":
+                                                row.cells[1].text=newReportName
+                                for section in doc.sections:
+                                    for par in section.footer.paragraphs:
+                                        if self.previousReportName in par.text:
+                                            replaceRunInParagraph(par,self.previousReportName,newReportName)
+                                doc.save(newfullpath)
+                                break
+                            except IOError:
+                                MsgBox("Please make sure the "+oldfullpath+" isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
+            else:
+                self.ReportsTable.item(row,1).setText(self.previousReportName)
+            self.previousReportName=None
+        except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def RefreshClicked(self):
