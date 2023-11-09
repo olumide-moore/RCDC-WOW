@@ -18,7 +18,7 @@ from os import mkdir,makedirs, rename, listdir, path, startfile, remove, environ
 from PyQt5.QtWidgets import QTabWidget,  QDateEdit, QInputDialog, QRadioButton, QFileDialog, QDoubleSpinBox, QSpinBox, QListView, QListWidgetItem, QShortcut,  QTextEdit, QWidget, QMainWindow, QApplication, QScrollArea, QAction, QLineEdit,\
     QStackedWidget, QTableWidget, QCalendarWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QMenu, QTableWidgetItem,QHeaderView, \
             QAbstractItemView, QLabel, QDialogButtonBox, QListWidget, QCheckBox, QFrame, QPushButton, QToolButton, QComboBox, QMessageBox, \
-                QDialog, QFormLayout, QGroupBox, QWhatsThis, QSizePolicy, QAbstractScrollArea, QDateTimeEdit, QTimeEdit
+                QDialog, QFormLayout, QGroupBox, QWhatsThis, QSizePolicy, QAbstractScrollArea, QDateTimeEdit, QTimeEdit, QSplitter
 from PyQt5.QtGui import QDragEnterEvent, QIcon, QKeySequence, QPixmap, QFont, QColor, QDropEvent, QRegExpValidator, QDoubleValidator, QFontDatabase, QCursor
 from PyQt5.Qt import QRect
 # from PyQt5 import QtWebEngineWidgets
@@ -288,9 +288,10 @@ def refreshMainWindow():
         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
 import time
-def tracktime(timelist=[],msg=""):
+def tracktime(timelist=[],msg="", reset=False):
     curtime=int(round(time.time() * 1000))
-    if len(timelist)==0:
+    if reset==True:
+        timelist.clear()
         print("Start timer from "+msg)
     else:
         print(f"{(curtime-timelist[-1])}ms or {(curtime-timelist[-1])/1000}s {msg}")
@@ -717,10 +718,13 @@ class ProjectsWidget(QWidget):
             self.FinanceButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
             self.FinanceButton.setText("Finance\nManagement")
             self.FinanceButton.setIcon(QIcon(finance_icon))
-            # self.FinanceButton.setGeometry(QRect(574, 140, 151, 31))
             self.FinanceButton.setIconSize(QSize(45, 35))
             self.FinanceButton.setStyleSheet("font-size:13px;")
-            self.FinanceButton.setEnabled(False)
+            # self.FinanceButton.setEnabled(False)
+            menu=QMenu()
+            self.FinanceButton.setMenu(menu)
+            self.FinanceButton.setPopupMode(QToolButton.InstantPopup)
+            self.invoiceaction=menu.addAction("Create Invoices", self.CreateInvoicesClicked)
 
           #Refresh button
             self.RefreshButton = QToolButton()
@@ -1181,6 +1185,294 @@ class ProjectsWidget(QWidget):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
+    def CreateInvoicesClicked(self):
+        try:
+            Projects={}
+            for proj in project3name_dict:
+                no, name=proj.split(" - ",1)
+                Projects[no]=name
+            invoice_data=list()
+            month_year=[None,None]
+            def getInvsDataFrmInvsTracker(invs_sheet):
+                try:
+                    '''
+                    Using given month and year, get invoice nos, date and project number from Invoices Tracking Schedule
+                    '''
+                    invoice_data.clear()
+                    month_year[0], month_year[1]= monthYearCombo.currentText().split("/")
+                    month=month_year[0]=int(month_year[0])
+                    year=month_year[1]=int(month_year[1])
+                    while True:
+                        try:
+                            wb = load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=True, data_only=True)
+                            sheet = wb[invs_sheet]
+                            last_row= sheet.max_row #Get last row in the sheet
+
+                            #Get invoice nos, date and project number and name for selected month
+                            for r in sheet.iter_rows(min_row=5, max_row=last_row, min_col=3, max_col=5, values_only=True):
+                                r_invno, r_date,r_projectno=r
+                                #If invoice no. found for selected month
+                                if r_invno!= None and r_date.__class__==datetime and r_date.month==month and r_date.year==year:
+                                    r_projectname=""
+                                    #Get project name from project no.
+                                    if r_projectno!=None: #If project no. is not empty
+                                        r_projectno=f"{r_projectno}".strip()
+                                        if r_projectno in Projects: #If project no. is in the list of projects
+                                            r_projectname=Projects[r_projectno]
+                                    invoice_data.append({"invoiceno":r_invno, "projectno":r_projectno,"projectname":r_projectname,"date":r_date})
+                            
+                            invoicenos_listWidget.clear()
+                            for index in range(len(invoice_data)): 
+                                data=invoice_data[index]
+                                data["index"]=index
+                                invoicenos_listWidget.addItem(f"{data['invoiceno']}\t-\t{data['projectname']}")
+                            wb.close()
+                            break
+                            # return invoice_data
+                        except IOError:
+                            MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            def getFeesnAddressFromAdmin():
+                try:
+                    tracktime(reset=True)
+                    if None in month_year: return
+                    month, year=month_year
+                    project_admin_data=list() #Stores data for each project
+                    missing_financeadmin=list() #Stores projects that are missing from the admin file
+                    
+                    selected_invoices=[inv for inv in invoice_data if invoicenos_listWidget.item(inv["index"]).isSelected()] #Get selected invoices
+                    if len(selected_invoices)==0:
+                        MsgBox("No invoice no. selected", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                        return
+                    for inv in selected_invoices:
+                        # print(inv.__str__())
+                        projectno=inv["projectno"]
+                        projectname=inv["projectname"]
+                        #If project no. is not empty and not already fetched
+                        if projectno not in [None, ""] and projectno not in list(map(lambda x: x["projectno"],project_admin_data)):
+                            projectadminfile=Project_Folders_dst+"\\"+projectno+" - "+projectname+"\\1 Fees and Invoicing\\4 Finance Admin\\PROJECT FINANCE - "+projectname+".xlsx"
+                            if path.exists(projectadminfile):
+                                while True:
+                                    try:
+                                        wb= load_workbook(projectadminfile, read_only=True, data_only=True)
+                                        sheetnames=wb.sheetnames
+                                        this_admin_data={"projectno":projectno,"fees":[]} #Stores data for this project
+                                        if "Incoming" in sheetnames:
+                                            sheet=wb["Incoming"]
+                                            last_row= sheet.max_row #Get last row in the sheet
+                                            #Get the column with the date
+                                            date_col=None
+                                            for r,values in enumerate(sheet.iter_rows(max_row=last_row, values_only=True)):
+                                                if r==0:
+                                                    for c,val in enumerate(values):
+                                                        if val.__class__==datetime and val.month==month and val.year==year:
+                                                            date_col=c
+                                                            break
+                                                    else:
+                                                        break #Specified date column not found
+                                                else:
+                                                    if len(values)>date_col and values[date_col] not in [None,""]:
+                                                        if r==1:
+                                                            this_admin_data["total"]=values[date_col]
+                                                        else:
+                                                            fee_data={
+                                                                "PO":values[0] if values[0] not in [None,""] else "PO TBC",
+                                                                "Reference":values[1] if values[1] not in [None,""] else "TBC",
+                                                                "Amount":values[date_col]
+                                                                }
+                                                            this_admin_data["fees"].append(fee_data)
+                                        if "Project Info" in sheetnames:
+                                            sheet=wb["Project Info"]
+                                            for r,values in enumerate(sheet.iter_rows(max_row=2,min_col=2,max_col=2, values_only=True)):
+                                                if r==0:
+                                                    this_admin_data["client"]=values[0]
+                                                if r==1:
+                                                    this_admin_data["address"]=values[0]
+                                        if this_admin_data["fees"]!=[]:  project_admin_data.append(this_admin_data)
+                                        wb.close()
+                                        # for data in project_admin_data:
+                                        #     print(data["projectno"])
+                                        #     for fee in data["fees"]:
+                                        #         print(fee.__str__())
+                                        #     print(data["total"])
+                                        #     print(data["client"])
+                                        #     print(data["address"])
+                                        break
+                                    except IOError:
+                                        MsgBox(projectadminfile+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Project Finance Admin file open",setIcon=QMessageBox.Critical)
+                            else:
+                                missing_financeadmin.append(projectno)
+                    if len(project_admin_data)>0:
+                        fillandExportInvoiceTemplate(project_admin_data)
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            def fillandExportInvoiceTemplate(project_admin_data):
+                try:
+                    tracktime(msg="Gotten admin data")
+                    # for i in invoice_data:
+                    #     print(i)
+                    def get_FeeAndSubTotal_Row():
+                        '''Gets the fee total and subtotal row in the invoice template.
+                        - returns the row number of the fee total and subtotal row
+                        '''
+                        try:
+                            feetotal_row=None
+                            subtotal_row=None
+                            while True:
+                                try:
+                                    wb= load_workbook(Invoice_Template, data_only=True, read_only=True)
+                                    sheet=wb["Sheet1"]
+                                    for r,values in enumerate(sheet.iter_rows(min_row=13, values_only=True)):
+                                        if 'Fee Total' in values: feetotal_row= r+13
+                                        if 'Subtotal' in values: subtotal_row= r+13
+                                    wb.close()
+                                    break
+                                except IOError:
+                                    MsgBox(Invoice_Template+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice Template file open",setIcon=QMessageBox.Critical)
+                            return feetotal_row, subtotal_row
+                        except:
+                            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                    if path.exists(Invoice_Template):
+                        while True:
+                            try:
+                                feetotal_row,subtotalrow=get_FeeAndSubTotal_Row()
+                                excel=Dispatch("Excel.Application")
+                                excel.Visible=False
+                                excel.DisplayAlerts=False
+                                if feetotal_row!=None and subtotalrow!=None and feetotal_row<subtotalrow:
+                                    space_available=subtotalrow-feetotal_row-1
+                                    date=datetime.now().strftime("%d/%m/%Y")
+                                    for inv in invoice_data:
+                                        if invoicenos_listWidget.item(inv["index"]).isSelected(): #If invoice no. is selected
+                                            invno=inv["invoiceno"]
+                                            projectno=inv["projectno"]
+                                            projectname=inv["projectname"]
+                                            # date=inv["date"]
+                                            for data in project_admin_data:
+                                                if data["projectno"]==projectno:
+                                                    fees=data["fees"]
+                                                    total=data["total"]
+                                                    client=data["client"]
+                                                    address=data["address"]
+                                                    break
+                                            # print(invno,projectno,projectname,date,fees,total,client,address)
+                                            while True:
+                                                try:
+                                                    #Fill the invoice template
+                                                    book = excel.Workbooks.Open(Invoice_Template)
+                                                    sheet=book.Worksheets("Sheet1")
+                                                    sheet.Range("G9").Value=f"{invno}"
+                                                    sheet.Range("G10").Value=date
+                                                    sheet.Range("A14").Value=client
+                                                    sheet.Range("A15").Value=address
+                                                    sheet.Range("A25").Value=projectno
+                                                    sheet.Range("C25").Value=projectname
+                                                    #Fill the fees
+                                                    rows_needed=len(fees)-space_available
+                                                    space_available=len(fees)
+                                                    #if the rows needed is greater than space available, insert rows
+                                                    if rows_needed>0:
+                                                        #add the needed rows above the subtotal row
+                                                        sheet.Rows(f"{subtotalrow}:{subtotalrow+rows_needed-1}").Insert()
+                                                        #update the subtotal row
+                                                        subtotalrow+=rows_needed
+                                                    elif rows_needed<0:
+                                                        #delete the extra rows
+                                                        sheet.Rows(f"{subtotalrow+rows_needed}:{subtotalrow-1}").Delete()
+                                                        #update the subtotal row
+                                                        subtotalrow+=rows_needed       
+                                                    for r in range(feetotal_row+1,feetotal_row+len(fees)+1):
+                                                        feeindex=r-feetotal_row-1
+                                                        #Fill the fee details
+                                                        sheet.Range(f"A{r}").Value=fees[feeindex]["PO"]
+                                                        sheet.Range(f"C{r}").Value=fees[feeindex]["Reference"]
+                                                        sheet.Range(f"G{r}").Value=fees[feeindex]["Amount"]
+                                                        #Merge  A:B and C:F cells for each inserted row
+                                                        sheet.Range(f"A{r}:B{r}").Merge()
+                                                        sheet.Range(f"C{r}:F{r}").Merge()
+                                                        #Set bottom border, left border and right border
+                                                        sheet.Range(f"A{r-1}:G{r}").Borders(9).Weight=3 #bottom border
+                                                        sheet.Range(f"A{r}").Borders(7).Weight=3 #left border
+                                                        sheet.Range(f"B{r}").Borders(10).Weight=2 #right border
+                                                        sheet.Range(f"G{r}").Borders(7).Weight=2 #
+                                                        sheet.Range(f"G{r}").Borders(10).Weight=3 
+                                                        #Auto fit columns C
+                                                        sheet.Columns("C").AutoFit()
+                                                    #put total in the subtotal row
+                                                    sheet.Range(f"G{subtotalrow}").Value=total
+                                                    #Export the invoice template
+                                                    book.SaveAs(r"C:\Users\olumi\OneDrive\Documents\Acer\_Chunks"+f"\\{invno}.pdf", FileFormat=57)
+                                                    # book.application.displayalerts=False
+                                                    break
+                                                except Exception as e:
+                                                    MsgBox("Make sure the invoice template and existing pdf for this invoice is closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice template or invoice pdf open",setIcon=QMessageBox.Critical)
+                                                    book.Close(True)
+                                                    # print(e)
+
+                                tracktime(msg="Filled and pdfed all invoices")
+                                book.Close(True)
+                                tracktime(msg="Closed invoice template")
+                                # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
+                                if excel.Workbooks.Count==0:
+                                    excel.Quit()
+                                else:
+                                    excel.Visible=True
+                                    excel.DisplayAlerts=True
+                                print("Done")
+                                break
+                            except IOError:
+                                MsgBox(Invoice_Template+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice Template file open",setIcon=QMessageBox.Critical)
+
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            if path.exists(Invoices_Tracking_Schedule_xlsx):
+                #Get all sheets in the workbook that start with 'INVS-Year '
+                while True:
+                    try:
+                        wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=True, data_only=True)
+                        sheet_names=wb.sheetnames
+                        sheet_names=[sheet for sheet in sheet_names if sheet.startswith("INVS-Year ")]
+                        wb.close()
+                        break
+                    except IOError:
+                        MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
+                if sheet_names==[]:
+                    MsgBox("No invoice tracking schedule found\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule not found",setIcon=QMessageBox.Critical)
+                    return
+                curdate=QDate.currentDate()
+                dialog=QDialog()
+                monthYearCombo=QComboBox()
+                # Get from last two months till next month
+                monthYearCombo.addItems([curdate.addMonths(i).toString("MM/yyyy") for i in range(-5,2)])
+                invs_sheetCombo=QComboBox()
+                invs_sheetCombo.addItems(sheet_names)
+                invs_sheetCombo.setCurrentIndex(len(sheet_names)-1)
+                getInvoiceesButton=QPushButton("Get Invoices")
+                getInvoiceesButton.clicked.connect(lambda: getInvsDataFrmInvsTracker(invs_sheetCombo.currentText()))
+
+                invoicenos_listWidget=QListWidget()
+                invoicenos_listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+                form=QFormLayout()
+                form.addRow("Select Month:",monthYearCombo)
+                form.addRow("Worksheet:",invs_sheetCombo)
+                form.addRow(getInvoiceesButton)
+                form.addRow(invoicenos_listWidget)
+                buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                buttonBox.accepted.connect(getFeesnAddressFromAdmin)
+                buttonBox.rejected.connect(dialog.reject)
+                form.addRow(buttonBox)
+
+                dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+                dialog.setWindowTitle("Create Invoices")
+                dialog.setLayout(form)
+                dialog.exec()
+            else:
+                MsgBox(Invoices_Tracking_Schedule_xlsx+" not found\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule not found",setIcon=QMessageBox.Critical)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+
     def changeSlctdProject(self, direction):
         try:
             newindex=self.slctdProjectIndex+direction
@@ -1548,7 +1840,7 @@ class ProjectsDeadlineWidget(QWidget):
     def funcOK(self, index=None):
         try:
             if self.deadlineEdit.toPlainText().strip()!="":
-                if index:
+                if index!=None:
                     activityfile=self.projectadminfolder+"\\Activities\\"+self.deadlineTable.item(index,self.columnLabels.index("Activity")).data(256)
                 else:
                     if path.exists(self.projectadminfolder+"\\Activities")==False:
@@ -4609,11 +4901,11 @@ class NewProject_Dialog(QDialog):
                         if createProject==True:
                             #Create the Project folder
                             self.NewProject_Folder = Project_Folders_dst +'\\'+str(self.projectNoEdit.text()) + ' - '+str(self.projectNameEdit.text())
-                            copyFolder(TemplateFolder, self.NewProject_Folder)
-                            issuesheetFile= self.NewProject_Folder+ '\\9 Issues\\Document Issue Sheet - ' + self.projectNameEdit.text() + '.xlsx'
-                            rename(self.NewProject_Folder+ '\\9 Issues\\Document Issue Sheet - Template.xlsx',issuesheetFile ) 
-                            financetemplateFile= self.NewProject_Folder+ '\\1 Fees and Invoicing\\4 Finance Admin\\PROJECT FINANCE - ' + self.projectNameEdit.text() + '.xlsx'
-                            rename(self.NewProject_Folder+ '\\1 Fees and Invoicing\\4 Finance Admin\\PROJECT FINANCE TEMPLATE.xlsx',financetemplateFile) 
+                            copyFolder(TemplateFolder, self.NewProject_Folder) #Copy template folder and rename to project name
+                            issuesheetFile= self.NewProject_Folder+ '\\9 Issues\\Document Issue Sheet - ' + self.projectNameEdit.text() + '.xlsx'#new suesheet name
+                            rename(self.NewProject_Folder+ '\\9 Issues\\Document Issue Sheet - Template.xlsx',issuesheetFile )  #rename the issuesheet file
+                            financetemplateFile= self.NewProject_Folder+ '\\1 Fees and Invoicing\\4 Finance Admin\\PROJECT FINANCE - ' + self.projectNameEdit.text() + '.xlsx'#new financeadmin file name
+                            rename(self.NewProject_Folder+ '\\1 Fees and Invoicing\\4 Finance Admin\\PROJECT FINANCE TEMPLATE.xlsx',financetemplateFile)  #rename the financeadmin file
                             
                             teammembers= ', '.join(self.projectTeamBox.checkedTexts)
                             # Populute the project details in the database project list
@@ -4971,7 +5263,6 @@ class Management_Window(QMainWindow):
             self.BankHolidaysButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
             self.BankHolidaysButton.setText("Get\nBank Holidays")
             self.BankHolidaysButton.setIcon(QIcon(finance_icon))
-            # self.FinanceButton.setGeometry(QRect(574, 140, 151, 31))
             self.BankHolidaysButton.setIconSize(QSize(45, 45))
             self.BankHolidaysButton.setEnabled(False)
             self.BankHolidaysButton.clicked.connect(self.GetBankHolidays)
@@ -6460,7 +6751,12 @@ class ProjectWindow(QMainWindow):
 
           #Get a list of the levels, types, roles codes from the excel central database file
             global Levels_col,Type_col,Role_col
-            wb = load_workbook(filename=Central_Database_xlsx,data_only=True)
+            while True:
+                try:
+                    wb = load_workbook(filename=Central_Database_xlsx,data_only=True)
+                    break
+                except IOError:
+                    MsgBox(Central_Database_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Central Database open",setIcon=QMessageBox.Critical)
             self.sheet_name=wb['WOW DR-SK Naming Convention']
             #Get the cells of each of the categories
             Levels_col= self.Services_col=self.ServicesRoles_col= Type_col= Role_col= 0
@@ -6520,7 +6816,7 @@ class ProjectWindow(QMainWindow):
                                 curRow+=1
                         SERVICES_Dict[str(self.sheet_name.cell(2, column).value)]=SerVar
                         SerVar={}
-          
+            wb.close()
           #Deadline and RIBA Stage
             # deadlineLayout= QHBoxLayout()
             # deadlineLabel=QLabel("Next deadline:")
@@ -6546,7 +6842,6 @@ class ProjectWindow(QMainWindow):
             # rightlayout.addWidget(deadlineWidget)
             rightlayout.addWidget(self.action_search)
             rightlayout.addWidget(self.filterOptions,1)
-
             projectwindow_actiontable.showRecordFor(projectwindow_actiontable.columnLabels.index("Project"),ThisProject_foldername.split(' - ',1)[1])
             projectwindow_actiontable.setColumnHidden(projectwindow_actiontable.columnLabels.index("Project"),True)
             rightlayout.addWidget(projectwindow_actiontable)
@@ -6791,52 +7086,50 @@ class FeesandFinancesWindow(QMainWindow):
         try:
             super().__init__()
           #New  Button
-            self.NewButton = QToolButton()
-            self.NewButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.NewButton.setText("New")
-            self.NewButton.setIcon(QIcon(newdrawing_icon))
-            self.NewButton.setStyleSheet("""QToolButton{border:0.5px;
+            NewButton = QToolButton()
+            NewButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            NewButton.setText("New")
+            NewButton.setIcon(QIcon(newdrawing_icon))
+            NewButton.setStyleSheet("""QToolButton{border:0.5px;
             border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
             background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            # self.NewButton.setGeometry(QRect(40, 63,170, 70))
-            self.NewButton.setIconSize(QSize(75, 42))
+            # NewButton.setGeometry(QRect(40, 63,170, 70))
+            NewButton.setIconSize(QSize(75, 42))
             menu=QMenu()
-            self.NewButton.setMenu(menu)
-            self.NewButton.setPopupMode(QToolButton.InstantPopup)
+            NewButton.setMenu(menu)
+            NewButton.setPopupMode(QToolButton.InstantPopup)
             self.feeaction=menu.addAction("Fees Proposal")
-            self.invoiceaction=menu.addAction("Create Invoice")
-            self.bidaction=menu.addAction("Bid Document")
+            # self.bidaction=menu.addAction("Bid Document")
 
             self.feeaction.triggered.connect(lambda:self.NewFeesProposalClicked())
-            self.invoiceaction.triggered.connect(lambda:self.CreateInvoiceClicked())
           #Refresh button
-            self.RefreshButton = QToolButton()
-            self.RefreshButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.RefreshButton.setText(" Refresh ")
-            self.RefreshButton.setIcon(QIcon(refresh_icon))
-            self.RefreshButton.setStyleSheet("""QToolButton{border:0.5px;
+            RefreshButton = QToolButton()
+            RefreshButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            RefreshButton.setText(" Refresh ")
+            RefreshButton.setIcon(QIcon(refresh_icon))
+            RefreshButton.setStyleSheet("""QToolButton{border:0.5px;
             border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
             background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            self.RefreshButton.setIconSize(QSize(45, 35))
-            self.RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
+            RefreshButton.setIconSize(QSize(45, 35))
+            RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
             QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
           #Help button
-            self.HelpButton = QToolButton()
-            # self.HelpButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.HelpButton.setText(" ? ")
-            # self.HelpButton.setIcon(QIcon(refresh_icon))
-            # self.HelpButton.setStyleSheet("""QToolButton{border:0.5px;
+            HelpButton = QToolButton()
+            # HelpButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            HelpButton.setText(" ? ")
+            # HelpButton.setIcon(QIcon(refresh_icon))
+            # HelpButton.setStyleSheet("""QToolButton{border:0.5px;
             # border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
             # background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            # self.HelpButton.setIconSize(QSize(45, 35))
-            self.HelpButton.clicked.connect(self.HelpClicked)#Connecting the button to its function when clicked
+            # HelpButton.setIconSize(QSize(45, 35))
+            HelpButton.clicked.connect(self.HelpClicked)#Connecting the button to its function when clicked
 
           #Project Label
             currentProjectLabel= QLabel("Fees and Finance:    " +ThisProject_foldername)
             currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
+            self.FeesTable = QTableWidget(1,1)
           #Fees Table
             if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal'):
-                self.FeesTable = QTableWidget(1,1)
                 self.FeesTable.setHorizontalHeaderLabels(["Reports Name"])
                 d=0
                 for file in listdir(ProjectFinanceFolder+'\\3 Fee Proposal'):
@@ -6849,7 +7142,6 @@ class FeesandFinancesWindow(QMainWindow):
                 self.FeesTable.installEventFilter(self)
 
             else:
-                self.FeesTable = QTableWidget(1,1)
                 self.FeesTable.setItem(0, 0,QTableWidgetItem("Path '" + ProjectFinanceFolder + '\\3 Fee Proposal' + "' not found"))
                 self.FeesTable.item(0,0).setBackground(QColor("#EE1111"))
                 self.feeaction.setEnabled(False)
@@ -6859,23 +7151,59 @@ class FeesandFinancesWindow(QMainWindow):
             header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
             # header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
             # header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-            # colsizelist=[self.ReportsTable.horizontalHeader().sectionSize(0),self.ReportsTable.horizontalHeader().sectionSize(1),self.ReportsTable.horizontalHeader().sectionSize(2)]
-            # self.ReportsTable.setSelectionBehavior(1)
+            colsizelist=[self.FeesTable.horizontalHeader().sectionSize(0)]
+            # self.FeesTable.setSelectionBehavior(1)
             # #Table expansion
-            # for i in range(0,3):
-            #     header.setSectionResizeMode(i, QHeaderView.Interactive)
-            #     self.ReportsTable.setColumnWidth(i,colsizelist[i]+60)
+            for i in range(1):
+                header.setSectionResizeMode(i, QHeaderView.Interactive)
+                self.FeesTable.setColumnWidth(i,colsizelist[i]+60)
             self.FeesTable.setShowGrid(False)
             self.FeesTable.verticalHeader().setVisible(False)
+            self.FeesTable.setHorizontalScrollMode(QTableWidget.ScrollPerPixel)
+            self.FeesTable.horizontalHeader().setMinimumWidth(500)
 
+            self.projectadminfile=ProjectFinanceFolder+"\\4 Finance Admin\\PROJECT FINANCE - "+ThisProject_name+".xlsx"
+
+
+            #Invoices process
+            financeAdminButton = QPushButton("Finance Admin")
+            financeAdminButton.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
+            financeAdminButton.clicked.connect(self.OpenFinanceAdmin)
+
+            #Create invoice button
+            invoiceButton = QPushButton("Create\n Invoice")
+            invoiceButton.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
+            
+
+            invoiceManagementLabel=QLabel("Invoice Management")
+            invoiceManagementLabel.setFont(QFont("Gill Sans MT", 12))
+            invoiceManagementLabel.setAlignment(Qt.AlignCenter)
+            invoiceGrid=QGridLayout()
+            invoiceGrid.addWidget(financeAdminButton,0,0)
+            invoiceGrid.addWidget(invoiceButton,0,1)
+            items=(invoiceGrid.itemAt(i) for i in range(invoiceGrid.count()))
+            for w in items:
+                w.widget().setMinimumHeight(163)
+                w.widget().setMaximumWidth(200)
+                w.widget().setFont(QFont("Gill Sans MT", 12))
+            
+            invoiceVLayout=QVBoxLayout()
+            invoiceVLayout.addStretch(1)
+            invoiceVLayout.addWidget(invoiceManagementLabel)
+            invoiceVLayout.addStretch(2)
+            invoiceVLayout.addLayout(invoiceGrid)
+            invoiceVLayout.addStretch(9)
+            invoiceWidget=QWidget()
+            invoiceWidget.setLayout(invoiceVLayout)
+            # invoicel
 
 
           #Page formats
             # self.setCentralWidget(self.scroll)
             self.OptionsLayout=QGridLayout()
-            self.OptionsLayout.addWidget(self.NewButton,1,0)
-            self.OptionsLayout.addWidget(self.RefreshButton,1,1)
-            self.OptionsLayout.addWidget(self.HelpButton,1,2)
+            self.OptionsLayout.addWidget(NewButton,1,0)
+            self.OptionsLayout.addWidget(RefreshButton,1,1)
+            self.OptionsLayout.addWidget(HelpButton,1,2)
 
             self.OptionsLayout.setHorizontalSpacing(30)
 
@@ -6885,18 +7213,35 @@ class FeesandFinancesWindow(QMainWindow):
             TopLayout.addStretch(18)
             TopLayout.addWidget(currentProjectLabel)
             TopLayout.addStretch(30)
+            
 
-            feesLayout=QVBoxLayout()
-            # sketchesLayout=QVBoxLayout()
-            # feesLayout.addWidget(self.Fees_search)
-            feesLayout.addWidget(self.FeesTable)
+            # feesLayout=QVBoxLayout()
+            # # sketchesLayout=QVBoxLayout()
+            # # feesLayout.addWidget(self.Fees_search)
+            # feesLayout.addWidget(self.FeesTable)
 
             MainLayout= QHBoxLayout()
-            MainLayout.addLayout(feesLayout)
+            # lLayout=QVBoxLayout()
+            # # self.FeesTable.setMaximumWidth(1000)
+            # lLayout.addWidget(self.FeesTable)
+            # rLayout=QVBoxLayout()
+            # rLayout.addWidget(financeAdminButton)
+            # rLayout.addWidget(invoiceButton)
+            split=QSplitter()
+            split.addWidget(self.FeesTable)
+            # split.addWodget(invoiceGrid)
+            split.addWidget(invoiceWidget)
+            split.setSizes([500,500])
+            MainLayout.addWidget(split)
+
+            # MainLayout.addLayout(lLayout)
+            # MainLayout.addLayout(rLayout)
+            # MainLayout.addStretch(1)
 
             FullLayout=QVBoxLayout()
             FullLayout.addLayout(TopLayout)
-            FullLayout.addLayout(MainLayout) 
+            FullLayout.addLayout(MainLayout,5) 
+            # FullLayout.addStretch(1)
 
             Page =QWidget()
             Page.setLayout(FullLayout)
@@ -6979,6 +7324,17 @@ class FeesandFinancesWindow(QMainWindow):
             pass
             # newinvoicedialog=NewInvoice_Dialog()
             # newinvoicedialog.exec()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def OpenFinanceAdmin(self):
+        try:
+
+            if path.exists(self.projectadminfile):
+                #Open the issue sheet
+                startfile(self.projectadminfile)
+            else:
+                MsgBox("'"+self.projectadminfile+"' not found", setWindowTitle="Finance Admin file missing", setIcon = QMessageBox.Information)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -7568,14 +7924,14 @@ class NewInvoice_Dialog(QDialog):
                                         MsgBox("The following data is missing:\n"+self.missingdata,setWindowTitle="Error", setIcon = QMessageBox.Critical)
                                     else:
                                         #Populate invoice template
-                                        if path.exists(InvoiceTemplate):
+                                        if path.exists(Invoice_Template):
                                         # pass
                                         # #Get next available invoice number and populate Invoice Tracking Schedult at the same time at once.
                                         # self.wb=load_workbook(filename=Invoices_Tracking_Schedule_xlsx,read_only=True)
                                         # invyrs=[tab for tab in self.wb.sheetnames if 'Project List' not in tab]
                                         # self.wb.close()
                                         # invyr, okPressed = QInputDialog.getItem(self, "Specify Invoice sheet","Select invoice sheet:", invyrs, len(invyrs)-1, False,self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-                                            doc=docx.Document(InvoiceTemplate)
+                                            doc=docx.Document(Invoice_Template)
                                             #Table 1
                                             for table in doc.tables:
                                                 if table.cell(0,0).text=="[Project Name]":
@@ -7583,7 +7939,7 @@ class NewInvoice_Dialog(QDialog):
 
                                                     table.cell(0,1).text=ThisProject_name
                                         else:
-                                            MsgBox("The path "+InvoiceTemplate+" was not found",setWindowTitle="Invoice Template missing", setIcon = QMessageBox.Critical)
+                                            MsgBox("The path "+Invoice_Template+" was not found",setWindowTitle="Invoice Template missing", setIcon = QMessageBox.Critical)
                                 else:
                                     self.wb.close()
                                     MsgBox("'Incoming' sheet missing",setWindowTitle='Sheet missing', setIcon = QMessageBox.Information)
@@ -13598,7 +13954,6 @@ if __name__ == "__main__":
             Central_Database_accdb=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\CENTRAL ADMIN DATABASE.accdb"
             Central_Database_xlsx=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\CENTRAL ADMIN DATABASE.xlsx"
 
-            Invoices_Tracking_Schedule_xlsx=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\Invoices Tracking Schedule.xlsx"
             management_json=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\users_jsons\management.json"
             users_jsons=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\users_jsons"
             help_json=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\help-info.json"
@@ -13619,7 +13974,8 @@ if __name__ == "__main__":
             SchedulesTempFolder= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Schedules Templates"
             ClientsLogos= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Business Admin\Templates\Client Logos"
             
-            InvoiceTemplate="" #r"C:\Users\user\Documents\_Chunks\WOW Chunks\Invoice Template.docx"
+            Invoice_Template=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\RCDC- INV - Templates\RCDC - INV - Template - WOW.xlsx"
+            Invoices_Tracking_Schedule_xlsx=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\Invoices Tracking Schedule.xlsx"
             #paths for icons
             newfolder_icon =userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\foldericon.ico"
             folder_icon =userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\folder-icon.ico"
@@ -13662,7 +14018,6 @@ if __name__ == "__main__":
             folded_icon= QIcon(userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\folded.ico")
             expanded_icon= QIcon(userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\expanded.ico")
 
-
             widget= QStackedWidget()
             #e1e5ee
             # widget.setStyleSheet("""QMainWindow{background:rgb(40, 40, 40);}""") #rgb(223, 227, 236)
@@ -13673,13 +14028,13 @@ if __name__ == "__main__":
 
         #     # # toremove (added for test)
             # activeProjectrow=43
-            # # activeProjectrow=26 #SHJS
-            # #     # activeProjectrow=88 #Paxton House
+            # # # activeProjectrow=26 #SHJS
+            # # #     # activeProjectrow=88 #Paxton House
             # projectwindow=ProjectWindow()
             # feesandfinanceswindow = FeesandFinancesWindow()
             # widget.addWidget(feesandfinanceswindow)
             # widget.setCurrentWidget(feesandfinanceswindow)
-            # newfeesdialog=NewFees_Dialog()
+            # # newfeesdialog=NewFees_Dialog()
             # widget.showMaximized() 
             # newfeesdialog.show()
         # # #     widget.addWidget(projectwindow)
@@ -13740,6 +14095,7 @@ if __name__ == "__main__":
             # newschedulesdialog.show()
         # #
             widget.showMaximized() #show window maximized whenever you run the code
+            # initwindow.projectsWidget.CreateInvoicesClicked()
             # widget.setMaximumSize(1000,1000)
             # QFontDatabase.addApplicationFont(montserrat_font)
             QFontDatabase.addApplicationFont(gadugi_font)
