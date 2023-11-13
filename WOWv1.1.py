@@ -1334,96 +1334,102 @@ class ProjectsWidget(QWidget):
                         except:
                             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
                     if path.exists(Invoice_Template):
-                        while True:
-                            try:
-                                feetotal_row,subtotalrow=get_FeeAndSubTotal_Row()
-                                excel=Dispatch("Excel.Application")
-                                excel.Visible=False
-                                excel.DisplayAlerts=False
-                                if feetotal_row!=None and subtotalrow!=None and feetotal_row<subtotalrow:
-                                    space_available=subtotalrow-feetotal_row-1
-                                    date=datetime.now().strftime("%d/%m/%Y")
-                                    for inv in invoice_data:
-                                        if invoicenos_listWidget.item(inv["index"]).isSelected(): #If invoice no. is selected
-                                            invno=inv["invoiceno"]
-                                            projectno=inv["projectno"]
-                                            projectname=inv["projectname"]
-                                            # date=inv["date"]
-                                            for data in project_admin_data:
-                                                if data["projectno"]==projectno:
-                                                    fees=data["fees"]
-                                                    total=data["total"]
-                                                    client=data["client"]
-                                                    address=data["address"]
-                                                    break
-                                            # print(invno,projectno,projectname,date,fees,total,client,address)
-                                            while True:
-                                                try:
-                                                    #Fill the invoice template
-                                                    book = excel.Workbooks.Open(Invoice_Template)
-                                                    sheet=book.Worksheets("Sheet1")
-                                                    sheet.Range("G9").Value=f"{invno}"
-                                                    sheet.Range("G10").Value=date
-                                                    sheet.Range("A14").Value=client
-                                                    sheet.Range("A15").Value=address
-                                                    sheet.Range("A25").Value=projectno
-                                                    sheet.Range("C25").Value=projectname
-                                                    #Fill the fees
-                                                    rows_needed=len(fees)-space_available
-                                                    space_available=len(fees)
-                                                    #if the rows needed is greater than space available, insert rows
-                                                    if rows_needed>0:
-                                                        #add the needed rows above the subtotal row
-                                                        sheet.Rows(f"{subtotalrow}:{subtotalrow+rows_needed-1}").Insert()
-                                                        #update the subtotal row
-                                                        subtotalrow+=rows_needed
-                                                    elif rows_needed<0:
-                                                        #delete the extra rows
-                                                        sheet.Rows(f"{subtotalrow+rows_needed}:{subtotalrow-1}").Delete()
-                                                        #update the subtotal row
-                                                        subtotalrow+=rows_needed       
-                                                    for r in range(feetotal_row+1,feetotal_row+len(fees)+1):
-                                                        feeindex=r-feetotal_row-1
-                                                        #Fill the fee details
-                                                        sheet.Range(f"A{r}").Value=fees[feeindex]["PO"]
-                                                        sheet.Range(f"C{r}").Value=fees[feeindex]["Reference"]
-                                                        sheet.Range(f"G{r}").Value=fees[feeindex]["Amount"]
-                                                        #Merge  A:B and C:F cells for each inserted row
-                                                        sheet.Range(f"A{r}:B{r}").Merge()
-                                                        sheet.Range(f"C{r}:F{r}").Merge()
-                                                        #Set bottom border, left border and right border
-                                                        sheet.Range(f"A{r-1}:G{r}").Borders(9).Weight=3 #bottom border
-                                                        sheet.Range(f"A{r}").Borders(7).Weight=3 #left border
-                                                        sheet.Range(f"B{r}").Borders(10).Weight=2 #right border
-                                                        sheet.Range(f"G{r}").Borders(7).Weight=2 #
-                                                        sheet.Range(f"G{r}").Borders(10).Weight=3 
-                                                        #Auto fit columns C
-                                                        sheet.Columns("C").AutoFit()
-                                                    #put total in the subtotal row
-                                                    sheet.Range(f"G{subtotalrow}").Value=total
-                                                    #Export the invoice template
-                                                    book.SaveAs(r"C:\Users\olumi\OneDrive\Documents\Acer\_Chunks"+f"\\{invno}.pdf", FileFormat=57)
-                                                    # book.application.displayalerts=False
-                                                    break
-                                                except Exception as e:
-                                                    MsgBox("Make sure the invoice template and existing pdf for this invoice is closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice template or invoice pdf open",setIcon=QMessageBox.Critical)
-                                                    book.Close(True)
-                                                    # print(e)
+                        feetotal_row,subtotalrow=get_FeeAndSubTotal_Row()
+                        excel=Dispatch("Excel.Application")
+                        shrtcutshell=Dispatch("WScript.Shell")
+                        excel.Visible=False
+                        excel.DisplayAlerts=False
+                        if feetotal_row!=None and subtotalrow!=None and feetotal_row<subtotalrow:
+                            space_available=subtotalrow-feetotal_row-1
+                            date=datetime.now().strftime("%d/%m/%Y")
+                            for inv in invoice_data:
+                                if invoicenos_listWidget.item(inv["index"]).isSelected(): #If invoice no. is selected
+                                    invno=inv["invoiceno"]
+                                    projectno=inv["projectno"]
+                                    projectname=inv["projectname"]
+                                    # date=inv["date"]
+                                    for data in project_admin_data:
+                                        if data["projectno"]==projectno:
+                                            fees=data["fees"]
+                                            total=data["total"]
+                                            client=data["client"]
+                                            address=data["address"]
+                                            break
+                                    # print(invno,projectno,projectname,date,fees,total,client,address)
+                                    while True:
+                                        try:
+                                            #Fill the invoice template
+                                            book = excel.Workbooks.Open(Invoice_Template)
+                                            sheet=book.Worksheets("Sheet1")
+                                            sheet.Range("G9").Value=f"{invno}"
+                                            sheet.Range("G10").Value=date
+                                            sheet.Range("A14").Value=client
+                                            sheet.Range("A15").Value=address
+                                            sheet.Range("A25").Value=projectno
+                                            sheet.Range("C25").Value=projectname
+                                            #Fill the fees
+                                            rows_needed=len(fees)-space_available
+                                            space_available=len(fees)
+                                            #if the rows needed is greater than space available, insert rows
+                                            if rows_needed>0:
+                                                #add the needed rows above the subtotal row
+                                                sheet.Rows(f"{subtotalrow}:{subtotalrow+rows_needed-1}").Insert()
+                                                #update the subtotal row
+                                                subtotalrow+=rows_needed
+                                            elif rows_needed<0:
+                                                #delete the extra rows
+                                                sheet.Rows(f"{subtotalrow+rows_needed}:{subtotalrow-1}").Delete()
+                                                #update the subtotal row
+                                                subtotalrow+=rows_needed       
+                                            for r in range(feetotal_row+1,feetotal_row+len(fees)+1):
+                                                feeindex=r-feetotal_row-1
+                                                #Fill the fee details
+                                                sheet.Range(f"A{r}").Value=fees[feeindex]["PO"]
+                                                sheet.Range(f"C{r}").Value=fees[feeindex]["Reference"]
+                                                sheet.Range(f"G{r}").Value=fees[feeindex]["Amount"]
+                                                #Merge  A:B and C:F cells for each inserted row
+                                                sheet.Range(f"A{r}:B{r}").Merge()
+                                                sheet.Range(f"C{r}:F{r}").Merge()
+                                                #Set bottom border, left border and right border
+                                                sheet.Range(f"A{r-1}:G{r}").Borders(9).Weight=3 #bottom border
+                                                sheet.Range(f"A{r}").Borders(7).Weight=3 #left border
+                                                sheet.Range(f"B{r}").Borders(10).Weight=2 #right border
+                                                sheet.Range(f"G{r}").Borders(7).Weight=2 #
+                                                sheet.Range(f"G{r}").Borders(10).Weight=3 
+                                                #Auto fit columns C
+                                                sheet.Columns("C").AutoFit()
+                                            #put total in the subtotal row
+                                            sheet.Range(f"G{subtotalrow}").Value=total
+                                            #Export the invoice template
+                                            # book.SaveAs(r"C:\Users\olumi\OneDrive\Documents\Acer\_Chunks"+f"\\{invno}.pdf", FileFormat=57)
+                                            print(projectno)
+                                            invfilename="RCDCtest - INV - "+str(invno).zfill(4)+" - "+ projectname+" - "+projectno
+                                            if path.exists(Invoice_Issues):
+                                                book.SaveAs(Invoice_Issues+"\\"+invfilename+".pdf", FileFormat=57)
+                                            #Save the shortcut
+                                                projectinvoicefolder=Project_Folders_dst+"\\"+projectno+" - "+projectname+"\\1 Fees and Invoicing\\1 Invoices"
+                                                if path.exists(projectinvoicefolder):
+                                                    shortcut=shrtcutshell.CreateShortCut(projectinvoicefolder+"\\"+invfilename+".lnk")
+                                                    shortcut.Targetpath=Invoice_Issues+"\\"+invfilename+".pdf"
+                                                    shortcut.save() 
+                                            # book.application.displayalerts=False
+                                            break
+                                        except Exception as e:
+                                            book.Close(True)
+                                            MsgBox("Make sure the invoice template and existing pdf for this invoice is closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice template or invoice pdf open",setIcon=QMessageBox.Critical)
+                                            # print(e)
 
-                                tracktime(msg="Filled and pdfed all invoices")
-                                book.Close(True)
-                                tracktime(msg="Closed invoice template")
-                                # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
-                                if excel.Workbooks.Count==0:
-                                    excel.Quit()
-                                else:
-                                    excel.Visible=True
-                                    excel.DisplayAlerts=True
-                                print("Done")
-                                break
-                            except IOError:
-                                MsgBox(Invoice_Template+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice Template file open",setIcon=QMessageBox.Critical)
-
+                        tracktime(msg="Filled and pdfed all invoices")
+                        book.Close(True)
+                        tracktime(msg="Closed invoice template")
+                        # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
+                        if excel.Workbooks.Count==0:
+                            excel.Quit()
+                        else:
+                            excel.Visible=True
+                            excel.DisplayAlerts=True
+                        # shrtcutshell.Quit()
+                        print("Done")
                 except:
                     MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
             if path.exists(Invoices_Tracking_Schedule_xlsx):
@@ -1471,7 +1477,6 @@ class ProjectsWidget(QWidget):
                 MsgBox(Invoices_Tracking_Schedule_xlsx+" not found\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule not found",setIcon=QMessageBox.Critical)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
 
     def changeSlctdProject(self, direction):
         try:
@@ -2049,149 +2054,149 @@ class ActionsTable(QTableWidget):
             normalboldfont.setPointSize(8)
 
             # dragicon=QIcon(r"C:\Users\olumi\Downloads\fi-xwluxx-three-bars-wide3.png")
-            # # dragicon=QIcon(r"C:\Users\olumi\Downloads\fi-xwluxx-three-bars-wide.jpg")
-            # self.setIconSize(QSize(25, 25))
+            # dragicon=QIcon(r"C:\Users\olumi\Downloads\fi-xwluxx-three-bars-wide.jpg")
+            self.setIconSize(QSize(25, 25))
 
             # dragicon.size
             actions=Actions().getActions()
             # test={}
             for usr_actions in actions:
-                    self.setRowCount(self.rowCount()+len(usr_actions)) #Set the table row count as the previous total count plus the length of the current table count
-                    for d in range(len(usr_actions)): # for each actions
-                        # self.code=''
-                        # for self.proj in project3name_dict: #Get the three letter code of the project and set it as self.code
-                        #     if self.proj.split(' - ',1)[1]==usr_actions[d]["Project"]:
-                        #         self.code=project3name_dict[self.proj]
-                        #         break
-                        # self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Ref."),QTableWidgetItem(self.code+str(usr_actions[d]['ID']).zfill(4))) #Set the table first column as the action's id but then in the format 'project three letter code'+'0000'
-                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For"),QTableWidgetItem(usr_actions[d]["ActionFor"]))
-                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setData(256,usr_actions[d]["filename"])
-                        if "ActionBy" in usr_actions[d]: self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setData(257,usr_actions[d]["ActionBy"])
+                self.setRowCount(self.rowCount()+len(usr_actions)) #Set the table row count as the previous total count plus the length of the current table count
+                for d in range(len(usr_actions)): # for each actions
+                    # self.code=''
+                    # for self.proj in project3name_dict: #Get the three letter code of the project and set it as self.code
+                    #     if self.proj.split(' - ',1)[1]==usr_actions[d]["Project"]:
+                    #         self.code=project3name_dict[self.proj]
+                    #         break
+                    # self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Ref."),QTableWidgetItem(self.code+str(usr_actions[d]['ID']).zfill(4))) #Set the table first column as the action's id but then in the format 'project three letter code'+'0000'
+                    self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For"),QTableWidgetItem(usr_actions[d]["ActionFor"]))
+                    self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setData(256,usr_actions[d]["filename"])
+                    if "ActionBy" in usr_actions[d]: self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setData(257,usr_actions[d]["ActionBy"])
 
-                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Project"),QTableWidgetItem(usr_actions[d]["Project"].split(' - ',1)[1]))
-                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Project")).setData(256,usr_actions[d]["Project"])
-                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Project")).setTextAlignment(Qt.AlignCenter)
+                    self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Project"),QTableWidgetItem(usr_actions[d]["Project"].split(' - ',1)[1]))
+                    self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Project")).setData(256,usr_actions[d]["Project"])
+                    self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Project")).setTextAlignment(Qt.AlignCenter)
 
-                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action"),QTableWidgetItem(usr_actions[d]["Action"])) #Also populate other columns (Action For, Project, Action, Due Date...)
-                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).setFont(normalboldfont)
-                        if "WeeklyData" in usr_actions[d]:
-                            wkdata=usr_actions[d]["WeeklyData"]
-                            # if len(wkdata)>1:
-                                #sort the weekly data by date
-                                # wkdata=dict(sorted(wkdata.items(), key=lambda x: datetime.strptime(x[0], "%d/%m/%Y")))
-                            self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).setData(256,wkdata)
-                        # if "WeeklyData" in usr_actions[d]:
-                        #     if usr_actions[d]["ActionFor"] not in test:
-                        #         test[usr_actions[d]["ActionFor"]]={}
-                        #     if usr_actions[d]["filename"] not in test[usr_actions[d]["ActionFor"]]:
-                        #         test[usr_actions[d]["ActionFor"]][usr_actions[d]["filename"]]=[]
-                        #     for v in list(usr_actions[d]["WeeklyData"].values()):
-                        #         if str(v['hrs'])[-2:]!=".0":
-                        #             test[usr_actions[d]["ActionFor"]][usr_actions[d]["filename"]].append(v['hrs'])
-                        #         # print(usr_actions[d]["WeeklyData"])
+                    self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action"),QTableWidgetItem(usr_actions[d]["Action"])) #Also populate other columns (Action For, Project, Action, Due Date...)
+                    self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).setFont(normalboldfont)
+                    if "WeeklyData" in usr_actions[d]:
+                        wkdata=usr_actions[d]["WeeklyData"]
+                        # if len(wkdata)>1:
+                            #sort the weekly data by date
+                            # wkdata=dict(sorted(wkdata.items(), key=lambda x: datetime.strptime(x[0], "%d/%m/%Y")))
+                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).setData(256,wkdata)
+                    # if "WeeklyData" in usr_actions[d]:
+                    #     if usr_actions[d]["ActionFor"] not in test:
+                    #         test[usr_actions[d]["ActionFor"]]={}
+                    #     if usr_actions[d]["filename"] not in test[usr_actions[d]["ActionFor"]]:
+                    #         test[usr_actions[d]["ActionFor"]][usr_actions[d]["filename"]]=[]
+                    #     for v in list(usr_actions[d]["WeeklyData"].values()):
+                    #         if str(v['hrs'])[-2:]!=".0":
+                    #             test[usr_actions[d]["ActionFor"]][usr_actions[d]["filename"]].append(v['hrs'])
+                    #         # print(usr_actions[d]["WeeklyData"])
 
 
-                            # print((self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).data(256)))
-                            # print(getsizeof(self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).data(256)))
-                        duedate= usr_actions[d]["DueDate"]
-                        if duedate!='':
-                            self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline"),QTableWidgetItem(self.reformatDate(datetime.strptime(duedate,"%d/%m/%Y %H:%M"))))
-                        else:
-                            self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline"),QTableWidgetItem(""))
-                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline")).setFont(normalboldfont)
-                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline")).setData(256,duedate)
+                        # print((self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).data(256)))
+                        # print(getsizeof(self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).data(256)))
+                    duedate= usr_actions[d]["DueDate"]
+                    if duedate!='':
+                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline"),QTableWidgetItem(self.reformatDate(datetime.strptime(duedate,"%d/%m/%Y %H:%M"))))
+                    else:
+                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline"),QTableWidgetItem(""))
+                    self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline")).setFont(normalboldfont)
+                    self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline")).setData(256,duedate)
 
-                        #     #this enables the data to be sorted as date
-                        #     self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline")).setData(Qt.DisplayRole,QDate(int(usr_actions[d]["DueDate"].split("/")[2][:4]),int(usr_actions[d]["DueDate"].split("/")[1]),int(usr_actions[d]["DueDate"].split("/")[0])))
-                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline")).setTextAlignment(Qt.AlignCenter)
-                        if isinstance(usr_actions[d]["Priority"], int):
-                            priorityitem = QTableWidgetItem()
-                            priorityitem.setData(Qt.DisplayRole, usr_actions[d]["Priority"])
-                            self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority"),priorityitem) 
-                            # self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority"),QTableWidgetItem(str(usr_actions[d]["Priority"]))) 
-                            self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority")).setTextAlignment(Qt.AlignCenter) 
-                        else:
-                            self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority"),QTableWidgetItem(""))
-                        statusitem = QTableWidgetItem(usr_actions[d]["Status"])
-                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Status"),statusitem)
-                        # if "ActionBy" in usr_actions[d]:
-                        #     statusitem.setData(256,usr_actions[d]["ActionBy"])
+                    #     #this enables the data to be sorted as date
+                    #     self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline")).setData(Qt.DisplayRole,QDate(int(usr_actions[d]["DueDate"].split("/")[2][:4]),int(usr_actions[d]["DueDate"].split("/")[1]),int(usr_actions[d]["DueDate"].split("/")[0])))
+                    self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Deadline")).setTextAlignment(Qt.AlignCenter)
+                    if isinstance(usr_actions[d]["Priority"], int):
+                        priorityitem = QTableWidgetItem()
+                        priorityitem.setData(Qt.DisplayRole, usr_actions[d]["Priority"])
+                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority"),priorityitem) 
+                        # self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority"),QTableWidgetItem(str(usr_actions[d]["Priority"]))) 
+                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority")).setTextAlignment(Qt.AlignCenter) 
+                    else:
+                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority"),QTableWidgetItem(""))
+                    statusitem = QTableWidgetItem(usr_actions[d]["Status"])
+                    self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Status"),statusitem)
+                    # if "ActionBy" in usr_actions[d]:
+                    #     statusitem.setData(256,usr_actions[d]["ActionBy"])
 
-                        # # if usr_actions[d]["StartDate"] != None:
-                        # #     dateitem = QTableWidgetItem()
-                        # #     # dateitem.setData(Qt.DisplayRole,QDate(int(usr_actions[d]["StartDate"].split("/")[2]),int(usr_actions[d]["StartDate"].split("/")[1]),int(usr_actions[d]["StartDate"].split("/")[0])))
-                        # #     self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Start Date"),QTableWidgetItem(dateitem))
-                        # #     self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Start Date")).setTextAlignment(Qt.AlignCenter)
-                        if "StartDate" in usr_actions[d]:
-                            self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Start Date"),QTableWidgetItem(self.reformatDate(usr_actions[d]["StartDate"])))
-                        else:
-                            self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Start Date"),QTableWidgetItem(""))
+                    # # if usr_actions[d]["StartDate"] != None:
+                    # #     dateitem = QTableWidgetItem()
+                    # #     # dateitem.setData(Qt.DisplayRole,QDate(int(usr_actions[d]["StartDate"].split("/")[2]),int(usr_actions[d]["StartDate"].split("/")[1]),int(usr_actions[d]["StartDate"].split("/")[0])))
+                    # #     self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Start Date"),QTableWidgetItem(dateitem))
+                    # #     self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Start Date")).setTextAlignment(Qt.AlignCenter)
+                    if "StartDate" in usr_actions[d]:
+                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Start Date"),QTableWidgetItem(self.reformatDate(usr_actions[d]["StartDate"])))
+                    else:
+                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Start Date"),QTableWidgetItem(""))
 
-                        if usr_actions[d]["TimeRequired"]!=None:
-                            #format time required
-                            displaytimereq= ""
-                            if usr_actions[d]["TimeRequired"]["hr"]>0: displaytimereq+=str(usr_actions[d]["TimeRequired"]["hr"])+"h"
-                            if displaytimereq!="": displaytimereq+=" "
-                            if usr_actions[d]["TimeRequired"]["min"]>0: displaytimereq+=str(usr_actions[d]["TimeRequired"]["min"])+"m"
-                            self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Time Required"),QTableWidgetItem(displaytimereq))
-                            self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Time Required")).setData(256,usr_actions[d]["TimeRequired"])
-                            self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Time Required")).setTextAlignment(Qt.AlignCenter)
-                        
-                        #Tooltips and background color for each action
-                        actionby= ""
-                        if self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).data(257)!=None: #if there's an actionby
-                            actionby= "(Added by " + self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).data(257) + ")\n"
-                        weeklydata= ""
-                        if self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).data(256) not in [None, {}]: #if there's a weekly data
-                            for wk, wkdata in self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).data(256).items():
-                                wkhr=wkdata['hrs']
-                                wkmin=round((wkhr-int(wkhr))*60)  
-                                wktime=f"{int(wkhr)}hr {wkmin}m" if wkmin>0 else f"{int(wkhr)}hr"
-                                weeklydata+= f"{wk} : {wkdata['notes']} | {wktime}\n"
-                            weeklydata=weeklydata[:-1]
-                        self.setItem(self.rowCount()-len(usr_actions)+d,len(self.columnLabels)-1,QTableWidgetItem("   "))
-                        if usr_actions[d]["Status"]=="Open":
-                            # if this_userdata!=None and this_userdata["initial"]==usr_actions[d]["ActionFor"]:
+                    if usr_actions[d]["TimeRequired"]!=None:
+                        #format time required
+                        displaytimereq= ""
+                        if usr_actions[d]["TimeRequired"]["hr"]>0: displaytimereq+=str(usr_actions[d]["TimeRequired"]["hr"])+"h"
+                        if displaytimereq!="": displaytimereq+=" "
+                        if usr_actions[d]["TimeRequired"]["min"]>0: displaytimereq+=str(usr_actions[d]["TimeRequired"]["min"])+"m"
+                        self.setItem(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Time Required"),QTableWidgetItem(displaytimereq))
+                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Time Required")).setData(256,usr_actions[d]["TimeRequired"])
+                        self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Time Required")).setTextAlignment(Qt.AlignCenter)
+                    
+                    #Tooltips and background color for each action
+                    actionby= ""
+                    if self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).data(257)!=None: #if there's an actionby
+                        actionby= "(Added by " + self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).data(257) + ")\n"
+                    weeklydata= ""
+                    if self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).data(256) not in [None, {}]: #if there's a weekly data
+                        for wk, wkdata in self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Action")).data(256).items():
+                            wkhr=wkdata['hrs']
+                            wkmin=round((wkhr-int(wkhr))*60)  
+                            wktime=f"{int(wkhr)}hr {wkmin}m" if wkmin>0 else f"{int(wkhr)}hr"
+                            weeklydata+= f"{wk} : {wkdata['notes']} | {wktime}\n"
+                        weeklydata=weeklydata[:-1]
+                    self.setItem(self.rowCount()-len(usr_actions)+d,len(self.columnLabels)-1,QTableWidgetItem("   "))
+                    if usr_actions[d]["Status"]=="Open":
+                        # if this_userdata!=None and this_userdata["initial"]==usr_actions[d]["ActionFor"]:
                             # self.item(self.rowCount()-len(usr_actions)+d,len(self.columnLabels)-1).setIcon(dragicon)
-                                # self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority")).setIcon(dragicon)
-                            #align the icon to right
-                            if "OnTime" in usr_actions[d] and usr_actions[d]["OnTime"]==False:
-                                tooltip="Task is overdue\n" +  \
-                                        "Deadline: " + datetime.strftime(datetime.strptime(usr_actions[d]["DueDate"], "%d/%m/%Y %H:%M"), "%d/%b/%Y %H:%M") + \
-                                        "\n"+actionby+weeklydata
-                                        # "Start Date: " + datetime.strftime(usr_actions[d]["StartDate"], "%d/%b/%Y %H:%M") + \
-                                for i in range(len(self.columnLabels)):
-                                    self.item(self.rowCount()-len(usr_actions)+d, i).setToolTip(tooltip)
-                                    # self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(240, 240, 250,240))
-                                    self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(255, 236, 188,240))
-                                # self.item(self.rowCount()-len(usr_actions)+d, self.columnLabels.index("Deadline")).setBackground(QColor(252, 235, 235))
-                                self.item(self.rowCount()-len(usr_actions)+d, self.columnLabels.index("Deadline")).setForeground(QColor(243, 93, 93))
-                            else:
-                                tooltip= actionby+weeklydata
-                                # "Start Date: " + datetime.strftime(usr_actions[d]["StartDate"], "%d/%b/%Y %H:%M") +
-                                for i in range(len(self.columnLabels)):
-                                    self.item(self.rowCount()-len(usr_actions)+d, i).setToolTip(tooltip)
-                                    # self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(240, 240, 250,240)) 
-                                    self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(255, 236, 188,240)) 
-                            if usr_actions[d]["Priority"]==1: #if priority is 1, set row font to bold
-                               
-                                self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setFont(boldfont)
-                                self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority")).setFont(boldfont)
-                                # self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setForeground(QColor(0,0,255))
+                            # self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority")).setIcon(dragicon)
+                        #align the icon to right
+                        if "OnTime" in usr_actions[d] and usr_actions[d]["OnTime"]==False:
+                            tooltip="Task is overdue\n" +  \
+                                    "Deadline: " + datetime.strftime(datetime.strptime(usr_actions[d]["DueDate"], "%d/%m/%Y %H:%M"), "%d/%b/%Y %H:%M") + \
+                                    "\n"+actionby+weeklydata
+                                    # "Start Date: " + datetime.strftime(usr_actions[d]["StartDate"], "%d/%b/%Y %H:%M") + \
+                            for i in range(len(self.columnLabels)):
+                                self.item(self.rowCount()-len(usr_actions)+d, i).setToolTip(tooltip)
+                                # self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(240, 240, 250,240))
+                                self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(255, 236, 188,240))
+                            # self.item(self.rowCount()-len(usr_actions)+d, self.columnLabels.index("Deadline")).setBackground(QColor(252, 235, 235))
+                            self.item(self.rowCount()-len(usr_actions)+d, self.columnLabels.index("Deadline")).setForeground(QColor(243, 93, 93))
+                        else:
+                            tooltip= actionby+weeklydata
+                            # "Start Date: " + datetime.strftime(usr_actions[d]["StartDate"], "%d/%b/%Y %H:%M") +
+                            for i in range(len(self.columnLabels)):
+                                self.item(self.rowCount()-len(usr_actions)+d, i).setToolTip(tooltip)
+                                # self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(240, 240, 250,240)) 
+                                self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(255, 236, 188,240)) 
+                        if usr_actions[d]["Priority"]==1: #if priority is 1, set row font to bold
+                            
+                            self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setFont(boldfont)
+                            self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("Priority")).setFont(boldfont)
+                            # self.item(self.rowCount()-len(usr_actions)+d,self.columnLabels.index("For")).setForeground(QColor(0,0,255))
 
-                        elif usr_actions[d]["Status"]=='Completed':
-                            tooltip="Completed: " + datetime.strftime(datetime.strptime(usr_actions[d]["ClosedDate"], "%d/%m/%Y %H:%M"), "%d/%b/%Y %H:%M")+"\n"+weeklydata
-                            for i in range(len(self.columnLabels)): 
-                                self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(192, 228, 212,200)) 
-                                # self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(120, 120, 120,1)) 
-                                self.item(self.rowCount()-len(usr_actions)+d,i).setForeground(QColor(20, 20, 20,200))
-                                self.item(self.rowCount()-len(usr_actions)+d,i).setToolTip(tooltip) 
-                        elif usr_actions[d]["Status"]=='Not Approved':
-                            tooltip = "Action is yet to be approved\n"+actionby+weeklydata
-                            for i in range(len(self.columnLabels)): 
-                                self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(120, 120, 120,10)) 
-                                self.item(self.rowCount()-len(usr_actions)+d,i).setForeground(QColor(70,70,70,200))
-                                self.item(self.rowCount()-len(usr_actions)+d,i).setToolTip(tooltip)
+                    elif usr_actions[d]["Status"]=='Completed':
+                        tooltip="Completed: " + datetime.strftime(datetime.strptime(usr_actions[d]["ClosedDate"], "%d/%m/%Y %H:%M"), "%d/%b/%Y %H:%M")+"\n"+weeklydata
+                        for i in range(len(self.columnLabels)): 
+                            self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(192, 228, 212,200)) 
+                            # self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(120, 120, 120,1)) 
+                            self.item(self.rowCount()-len(usr_actions)+d,i).setForeground(QColor(20, 20, 20,200))
+                            self.item(self.rowCount()-len(usr_actions)+d,i).setToolTip(tooltip) 
+                    elif usr_actions[d]["Status"]=='Not Approved':
+                        tooltip = "Action is yet to be approved\n"+actionby+weeklydata
+                        for i in range(len(self.columnLabels)): 
+                            self.item(self.rowCount()-len(usr_actions)+d,i).setBackground(QColor(120, 120, 120,10)) 
+                            self.item(self.rowCount()-len(usr_actions)+d,i).setForeground(QColor(70,70,70,200))
+                            self.item(self.rowCount()-len(usr_actions)+d,i).setToolTip(tooltip)
             # for p, ac in test.items():
             #     for f, h in ac.items():
             #         if h!=[]:
@@ -2283,38 +2288,38 @@ class ActionsTable(QTableWidget):
     #         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     # def dropEvent(self, event): #this handles what happens when you drop dragged row
-        # try:
-        #     if event.source()==self:
-        #         selectedrows=[i.row() for i in self.selectionModel().selectedRows() if self.isRowHidden(i.row())==False]
-        #         if len(selectedrows)==1:
-        #             row=selectedrows[0]
-        #             target_row=self.rowAt(event.pos().y())
-        #             if target_row!=None and target_row>-1 and this_userdata!=None and self.item(target_row,self.columnLabels.index("For")).text()==this_userdata["initial"] and self.item(target_row,self.columnLabels.index("Status")).text()=="Open":
-        #                 if target_row!=row:
-        #                     # print(f"{self.item(row,self.columnLabels.index('Priority')).text()} becomes {self.item(target_row,self.columnLabels.index('Priority')).text()}")
-        #                     with open(users_jsons+"\\"+self.item(row,self.columnLabels.index("For")).text()+"\\"+self.item(row,self.columnLabels.index("For")).data(256),'w') as f: #create json file
-        #                         obj= {
-        #                             "ActionFor": self.item(row,self.columnLabels.index("For")).text(),
-        #                             "Project": self.item(row,self.columnLabels.index("Project")).data(256),
-        #                             "Action":  self.item(row,self.columnLabels.index("Action")).text(),
-        #                             "Status": "Open",
-        #                             "ClosedDate": "",
-        #                             "DueDate": self.item(row,self.columnLabels.index("Deadline")).data(256),
-        #                             "TimeRequired": self.item(row,self.columnLabels.index("Time Required")).data(256),
-        #                             "Priority": int(self.item(target_row,self.columnLabels.index("Priority")).text()),
-        #                         }
-        #                         if self.item(row,self.columnLabels.index("For")).data(257)!=None : obj["ActionBy"]= self.item(row,self.columnLabels.index("For")).data(257) 
-        #                         if self.item(row,self.columnLabels.index("Action")).data(256)!=None : obj["WeeklyData"]= self.item(row,self.columnLabels.index("Action")).data(256)
-        #                         json_dump(obj, f, indent=2)
+    #     try:
+    #         if event.source()==self:
+    #             selectedrows=[i.row() for i in self.selectionModel().selectedRows() if self.isRowHidden(i.row())==False]
+    #             if len(selectedrows)==1:
+    #                 row=selectedrows[0]
+    #                 target_row=self.rowAt(event.pos().y())
+    #                 if target_row!=None and target_row>-1 and this_userdata!=None and self.item(target_row,self.columnLabels.index("For")).text()==this_userdata["initial"] and self.item(target_row,self.columnLabels.index("Status")).text()=="Open":
+    #                     if target_row!=row:
+    #                         # print(f"{self.item(row,self.columnLabels.index('Priority')).text()} becomes {self.item(target_row,self.columnLabels.index('Priority')).text()}")
+    #                         with open(users_jsons+"\\"+self.item(row,self.columnLabels.index("For")).text()+"\\"+self.item(row,self.columnLabels.index("For")).data(256),'w') as f: #create json file
+    #                             obj= {
+    #                                 "ActionFor": self.item(row,self.columnLabels.index("For")).text(),
+    #                                 "Project": self.item(row,self.columnLabels.index("Project")).data(256),
+    #                                 "Action":  self.item(row,self.columnLabels.index("Action")).text(),
+    #                                 "Status": "Open",
+    #                                 "ClosedDate": "",
+    #                                 "DueDate": self.item(row,self.columnLabels.index("Deadline")).data(256),
+    #                                 "TimeRequired": self.item(row,self.columnLabels.index("Time Required")).data(256),
+    #                                 "Priority": int(self.item(target_row,self.columnLabels.index("Priority")).text()),
+    #                             }
+    #                             if self.item(row,self.columnLabels.index("For")).data(257)!=None : obj["ActionBy"]= self.item(row,self.columnLabels.index("For")).data(257) 
+    #                             if self.item(row,self.columnLabels.index("Action")).data(256)!=None : obj["WeeklyData"]= self.item(row,self.columnLabels.index("Action")).data(256)
+    #                             json_dump(obj, f, indent=2)
 
-        #                     self.shiftPrioritiesBtwnOldandNew(int(self.item(row,self.columnLabels.index("Priority")).text()),int(self.item(target_row,self.columnLabels.index("Priority")).text()),self.item(row,self.columnLabels.index("For")).text())
-        #                     tracktime()
+    #                         self.shiftPrioritiesBtwnOldandNew(int(self.item(row,self.columnLabels.index("Priority")).text()),int(self.item(target_row,self.columnLabels.index("Priority")).text()),self.item(row,self.columnLabels.index("For")).text())
+    #                         tracktime(reset=True)
                             
-        #                     self.refreshWindow()
-        #                     tracktime()
+    #                         self.refreshWindow()
+    #                         tracktime(msg="Action priority changed")
 
-        # except: 
-        #     MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    #     except: 
+    #         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def dateSuffix(self,myDate):
         try:
@@ -2642,8 +2647,6 @@ class ActionsTable(QTableWidget):
                 dialog.exec()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-
 
     def approveAction(self):
         try:
@@ -3091,6 +3094,12 @@ class ActionsTable(QTableWidget):
                     msg.exec_()
 
         except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def refreshTableandGraph(self):
+        try:
+            pass
+        except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def refreshWindow(self):
@@ -7173,7 +7182,7 @@ class FeesandFinancesWindow(QMainWindow):
             #Create invoice button
             invoiceButton = QPushButton("Create\n Invoice")
             invoiceButton.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
-            
+            invoiceButton.clicked.connect(self.CreateInvoice)
 
             invoiceManagementLabel=QLabel("Invoice Management")
             invoiceManagementLabel.setFont(QFont("Gill Sans MT", 12))
@@ -7319,11 +7328,231 @@ class FeesandFinancesWindow(QMainWindow):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    def CreateInvoiceClicked(self):
+    def CreateInvoice(self):
         try:
-            pass
-            # newinvoicedialog=NewInvoice_Dialog()
-            # newinvoicedialog.exec()
+            def getFeesnAddressFromAdmin():
+                try:
+                    if invoiceNoEdit.text() in [None,""]:
+                        MsgBox("Enter invoice no.", setWindowTitle="Error", setIcon = QMessageBox.Information)
+                        return
+                    month_year= monthYearCombo.currentText().split("/")
+                    month=int(month_year[0])
+                    year=int(month_year[1])
+                    tracktime(reset=True)
+                    if None in month_year: return
+                    dateFound=False    
+                    this_admin_data={"fees":[]}            
+                    projectadminfile=ProjectFinanceFolder+"\\4 Finance Admin\\PROJECT FINANCE - "+ThisProject_name+".xlsx"
+                    if path.exists(projectadminfile):
+                        while True:
+                            try:
+                                wb= load_workbook(projectadminfile, read_only=True, data_only=True)
+                                sheetnames=wb.sheetnames
+                                if "Incoming" in sheetnames:
+                                    sheet=wb["Incoming"]
+                                    last_row= sheet.max_row #Get last row in the sheet
+                                    #Get the column with the date
+                                    date_col=None
+                                    for r,values in enumerate(sheet.iter_rows(max_row=last_row, values_only=True)):
+                                        if r==0:
+                                            for c,val in enumerate(values):
+                                                if val.__class__==datetime and val.month==month and val.year==year:
+                                                    date_col=c
+                                                    dateFound=True
+                                                    break
+                                            else:
+                                                break #Specified date column not found
+                                        else:
+                                            if len(values)>date_col and values[date_col] not in [None,""]:
+                                                if r==1:
+                                                    this_admin_data["total"]=values[date_col]
+                                                else:
+                                                    fee_data={
+                                                        "PO":values[0] if values[0] not in [None,""] else "PO TBC",
+                                                        "Reference":values[1] if values[1] not in [None,""] else "TBC",
+                                                        "Amount":values[date_col]
+                                                        }
+                                                    this_admin_data["fees"].append(fee_data)
+                                if "Project Info" in sheetnames:
+                                    sheet=wb["Project Info"]
+                                    for r,values in enumerate(sheet.iter_rows(max_row=2,min_col=2,max_col=2, values_only=True)):
+                                        if r==0:
+                                            this_admin_data["client"]=values[0]
+                                        if r==1:
+                                            this_admin_data["address"]=values[0]
+                                wb.close()
+                                if not dateFound:
+                                    MsgBox("No invoice found for "+monthYearCombo.currentText(), setWindowTitle="          ", setIcon = QMessageBox.Information)
+                                    return
+                                break
+                            except IOError:
+                                MsgBox(projectadminfile+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Project Finance Admin file open",setIcon=QMessageBox.Critical)
+                    else:
+                        MsgBox(projectadminfile+" not found\n\nIf confused please contact software programmer",setWindowTitle="Project Finance Admin file missing",setIcon=QMessageBox.Critical)
+                        return
+                    if this_admin_data["fees"]==[]:
+                        MsgBox("No fees found for "+monthYearCombo.currentText(), setWindowTitle="          ", setIcon = QMessageBox.Information)
+                    else:
+                        fillandExportInvoiceTemplate(this_admin_data)
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            
+            def fillandExportInvoiceTemplate(this_admin_data):
+                try:
+                    tracktime(msg="Gotten admin data")
+                    # for i in invoice_data:
+                    #     print(i)
+                    def get_FeeAndSubTotal_Row():
+                        '''Gets the fee total and subtotal row in the invoice template.
+                        - returns the row number of the fee total and subtotal row
+                        '''
+                        try:
+                            feetotal_row=None
+                            subtotal_row=None
+                            while True:
+                                try:
+                                    wb= load_workbook(Invoice_Template, data_only=True, read_only=True)
+                                    sheet=wb["Sheet1"]
+                                    for r,values in enumerate(sheet.iter_rows(min_row=13, values_only=True)):
+                                        if 'Fee Total' in values: feetotal_row= r+13
+                                        if 'Subtotal' in values: subtotal_row= r+13
+                                    wb.close()
+                                    break
+                                except IOError:
+                                    MsgBox(Invoice_Template+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice Template file open",setIcon=QMessageBox.Critical)
+                            return feetotal_row, subtotal_row
+                        except:
+                            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                    if path.exists(Invoice_Template):
+                        feetotal_row,subtotalrow=get_FeeAndSubTotal_Row()
+                        excel=Dispatch("Excel.Application")
+                        shrtcutshell=Dispatch("WScript.Shell")
+                        excel.Visible=False
+                        excel.DisplayAlerts=False
+                        if feetotal_row!=None and subtotalrow!=None and feetotal_row<subtotalrow:
+                            space_available=subtotalrow-feetotal_row-1
+                            invno=invoiceNoEdit.text()
+                            while True:
+                                try:
+                                    #Fill the invoice template
+                                    book = excel.Workbooks.Open(Invoice_Template)
+                                    sheet=book.Worksheets("Sheet1")
+                                    sheet.Range("G9").Value=f"{invno}"
+                                    sheet.Range("G10").Value=dateEdit.date().toString("dd/MM/yyyy")
+                                    client=this_admin_data["client"]
+                                    if client in [None,""]: client= ThisProject_client
+                                    sheet.Range("A14").Value=client
+                                    sheet.Range("A15").Value=this_admin_data["address"]
+                                    sheet.Range("A25").Value=f"{ThisProject_no}"
+                                    sheet.Range("C25").Value=ThisProject_name
+                                    #Fill the fees
+                                    fees=this_admin_data["fees"]
+                                    rows_needed=len(fees)-space_available
+                                    # space_available=len(fees)
+                                    #if the rows needed is greater than space available, insert rows
+                                    if rows_needed>0:
+                                        #add the needed rows above the subtotal row
+                                        sheet.Rows(f"{subtotalrow}:{subtotalrow+rows_needed-1}").Insert()
+                                        #update the subtotal row
+                                        subtotalrow+=rows_needed
+                                    elif rows_needed<0:
+                                        #delete the extra rows
+                                        sheet.Rows(f"{subtotalrow+rows_needed}:{subtotalrow-1}").Delete()
+                                        #update the subtotal row
+                                        subtotalrow+=rows_needed       
+                                    for r in range(feetotal_row+1,feetotal_row+len(fees)+1):
+                                        feeindex=r-feetotal_row-1
+                                        #Fill the fee details
+                                        sheet.Range(f"A{r}").Value=fees[feeindex]["PO"]
+                                        sheet.Range(f"C{r}").Value=fees[feeindex]["Reference"]
+                                        sheet.Range(f"G{r}").Value=fees[feeindex]["Amount"]
+                                        #Merge  A:B and C:F cells for each inserted row
+                                        sheet.Range(f"A{r}:B{r}").Merge()
+                                        sheet.Range(f"C{r}:F{r}").Merge()
+                                        #Set bottom border, left border and right border
+                                        sheet.Range(f"A{r-1}:G{r}").Borders(9).Weight=3 #bottom border
+                                        sheet.Range(f"A{r}").Borders(7).Weight=3 #left border
+                                        sheet.Range(f"B{r}").Borders(10).Weight=2 #right border
+                                        sheet.Range(f"G{r}").Borders(7).Weight=2 #
+                                        sheet.Range(f"G{r}").Borders(10).Weight=3 
+                                        #Auto fit columns C
+                                        sheet.Columns("C").AutoFit()
+                                    #put total in the subtotal row
+                                    sheet.Range(f"G{subtotalrow}").Value=this_admin_data["total"]
+                                    #Export the invoice template
+                                    # book.SaveAs(r"C:\Users\olumi\OneDrive\Documents\Acer\_Chunks"+f"\\{invno}.pdf", FileFormat=57)
+                                    invfilename="RCDCtest - INV - "+str(invno).zfill(4)+" - "+ ThisProject_name+" - "+f"{ThisProject_no}"
+                                    if path.exists(Invoice_Issues):
+                                        book.SaveAs(Invoice_Issues+"\\"+invfilename+".pdf", FileFormat=57)
+                                    #Save the shortcut
+                                        projectinvoicefolder=Project_Folders_dst+"\\"+f"{ThisProject_no}"+" - "+ThisProject_name+"\\1 Fees and Invoicing\\1 Invoices"
+                                        if path.exists(projectinvoicefolder):
+                                            shortcut=shrtcutshell.CreateShortCut(projectinvoicefolder+"\\"+invfilename+".lnk")
+                                            shortcut.Targetpath=Invoice_Issues+"\\"+invfilename+".pdf"
+                                            shortcut.save() 
+                                    # book.application.displayalerts=False
+                                    break
+                                except Exception as e:
+                                    book.Close(True)
+                                    MsgBox("Make sure the invoice template and existing pdf for this invoice is closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice template or invoice pdf open",setIcon=QMessageBox.Critical)
+                                    # print(e)
+
+                        tracktime(msg="Filled and pdfed all invoices")
+                        book.Close(True)
+                        tracktime(msg="Closed invoice template")
+                        # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
+                        if excel.Workbooks.Count==0:
+                            excel.Quit()
+                        else:
+                            excel.Visible=True
+                            excel.DisplayAlerts=True
+                        # shrtcutshell.Quit()
+                        # print("Done")
+                        dialog.reject()
+                        msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
+                        msg.exec_()
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            
+            # #Get all sheets in the Invs Tracking Sched that start with 'INVS-Year '
+            # while True:
+            #     try:
+            #         wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=True, data_only=True)
+            #         sheet_names=wb.sheetnames
+            #         sheet_names=[sheet for sheet in sheet_names if sheet.startswith("INVS-Year ")]
+            #         wb.close()
+            #         break
+            #     except IOError:
+            #         MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
+            # if sheet_names==[]:
+            #     MsgBox("No invoice tracking schedule found\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule not found",setIcon=QMessageBox.Critical)
+            #     return
+    
+            curdate=QDate.currentDate()
+            dialog=QDialog()
+            dateEdit=QDateEdit()
+            dateEdit.setDate(curdate)
+            monthYearCombo=QComboBox()
+            invoiceNoEdit=QLineEdit()
+            invoiceNoEdit.setPlaceholderText("000")
+            invoiceNoEdit.setValidator(QRegExpValidator(QRegExp("[0-9]{3}")))
+            # Get from last two months till next month
+            monthYearCombo.addItems([curdate.addMonths(i).toString("MM/yyyy") for i in range(-5,2)])
+            # invs_sheetCombo=QComboBox()
+
+            form=QFormLayout()
+            form.addRow("Date:",dateEdit)
+            form.addRow("Select Month:",monthYearCombo)
+            form.addRow("Invoice No:",invoiceNoEdit)
+            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttonBox.accepted.connect(getFeesnAddressFromAdmin)
+            buttonBox.rejected.connect(dialog.reject)
+            form.addRow(buttonBox)
+
+            dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            dialog.setWindowTitle("Create Invoices")
+            dialog.setLayout(form)
+            dialog.exec()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -13975,6 +14204,7 @@ if __name__ == "__main__":
             ClientsLogos= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Business Admin\Templates\Client Logos"
             
             Invoice_Template=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\RCDC- INV - Templates\RCDC - INV - Template - WOW.xlsx"
+            Invoice_Issues=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\RCDC- INV - Issues"
             Invoices_Tracking_Schedule_xlsx=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\Invoices Tracking Schedule.xlsx"
             #paths for icons
             newfolder_icon =userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\foldericon.ico"
@@ -14035,8 +14265,8 @@ if __name__ == "__main__":
             # widget.addWidget(feesandfinanceswindow)
             # widget.setCurrentWidget(feesandfinanceswindow)
             # # newfeesdialog=NewFees_Dialog()
-            # widget.showMaximized() 
-            # newfeesdialog.show()
+            # # widget.showMaximized() 
+            # # newfeesdialog.show()
         # # #     widget.addWidget(projectwindow)
         # # #     widget.setCurrentWidget(projectwindow)
             
@@ -14081,9 +14311,6 @@ if __name__ == "__main__":
 
             # qadialog=QA_Dialog()
             # qadialog.show()
-
-            # newinvoicedialog=NewInvoice_Dialog()
-            # newinvoicedialog.show()
 
             # specswindow=SpecsWindow()
             # widget.addWidget(specswindow)
