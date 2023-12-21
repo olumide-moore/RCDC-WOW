@@ -1902,7 +1902,7 @@ class Actions():
                 # get the the user's holidays and general holidays
                 curuser_json= [emp for emp in json_data["employees"] if emp['initial']==usr][0]
                 curuser_holidaylist=list()#empty holidays list
-                curuser_holidaylist.extend(json_data["generalholidays"]) #add general holidays
+                if "generalholidays" in json_data: curuser_holidaylist.extend(json_data["generalholidays"]) #add general holidays
                 curuser_holidaylist.extend(curuser_json["holidays"])# add user's holidays
                 sortedholidaysInDatetime=self.getsortedholidaysInDatetime(curuser_holidaylist,usr)
 
@@ -7332,9 +7332,6 @@ class FeesandFinancesWindow(QMainWindow):
         try:
             def getFeesnAddressFromAdmin():
                 try:
-                    if invoiceNoEdit.text() in [None,""]:
-                        MsgBox("Enter invoice no.", setWindowTitle="Error", setIcon = QMessageBox.Information)
-                        return
                     month_year= monthYearCombo.currentText().split("/")
                     month=int(month_year[0])
                     year=int(month_year[1])
@@ -7392,13 +7389,82 @@ class FeesandFinancesWindow(QMainWindow):
                         return
                     if this_admin_data["fees"]==[]:
                         MsgBox("No fees found for "+monthYearCombo.currentText(), setWindowTitle="          ", setIcon = QMessageBox.Information)
+                        return
                     else:
-                        fillandExportInvoiceTemplate(this_admin_data)
+                        return this_admin_data
                 except:
                     MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            
+            def setInvoiceNo():
+                try:
+                    if newInvRadioBut.isChecked():
+                        excel=Dispatch("Excel.Application")
+                        excel.DisplayAlerts=False
+                        while True:
+                            try:
+                                #Fill the invoice template
+                                excel.Visible=False
+                                book = excel.Workbooks.Open(Invoices_Tracking_Schedule_xlsx)
+                                sheet=book.Worksheets(invs_sheetCombo.currentText())
+                                # last_row= sheet.max_row #Get last row in the sheet
+                                # sheet.Range(f"C{last_row+4}").Value=2442
+                                sheet.Range("C17").Value=2442
+                                book.Save()                                 
+                                break
+                            except Exception as e:
+                                book.Close(True)
+                                print(e)
+                        print("filled, waiting to close")
+                        book.Close(True)
+                        print("closed")
+                        # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
+                        if excel.Workbooks.Count==0:
+                            excel.Quit()
+                            print("quit")
+                        else:
+                            excel.Visible=True
+                            excel.DisplayAlerts=True
+
+
+
+
+                        # while True:
+                        #     try:
+                        #         wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=False, keep_links=False)# data_only=True)
+                        #         sheet=wb[invs_sheetCombo.currentText()]
+                        #         last_row= sheet.max_row #Get last row in the sheet
+                        #         #Loop through the rows to get the last invoice number (integer)
+                        #         # for r,values in enumerate(sheet.iter_rows(min_row=max_row+1, max_row=last_row, min_col=1, max_col=1, values_only=True)):
+                        #         all_rows = list(sheet.iter_rows(max_row=last_row, min_row=12, min_col=3, max_col=3, values_only=True))
+                        #         #remove trailing empty rows
+                        #         for index in range(len(all_rows) - 1, -1, -1):
+                        #             if isinstance(all_rows[index][0], int):
+                        #                 row=index+13
+                        #                 invoice_no=all_rows[index][0]+1
+                        #                 break
+                        #         else:
+                        #             row=13
+                        #             invoice_no=1
+                        #         # print(row,invoice_no)
+                        #         #insert a row in the row
+                        #         # sheet.insert_rows(row)
+                        #         # fill=[cel.fill for col in sheet.iter_cols(min_row=row-1,max_row=row-1,min_col=3,max_col=3) for cel in col]
+                        #         # print(fill)
+                        #         # sheet.cell(row,3).fill=copy(fill[0])
+                        #         # if sheet.cell(last_row,0).value!=None:
+                        #         sheet.cell(row,3).value=invoice_no
+                        #         wb.save(Invoices_Tracking_Schedule_xlsx)
+                        #         wb.close()
+                        #         break
+                        #     except IOError:
+                        #         MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
+                
+
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
             def fillandExportInvoiceTemplate(this_admin_data):
                 try:
+                    setInvoiceNo()
                     tracktime(msg="Gotten admin data")
                     # for i in invoice_data:
                     #     print(i)
@@ -7491,14 +7557,15 @@ class FeesandFinancesWindow(QMainWindow):
                                             shortcut.Targetpath=Invoice_Issues+"\\"+invfilename+".pdf"
                                             shortcut.save() 
                                     # book.application.displayalerts=False
+                                    tracktime(msg="Filled and pdfed all invoices")
+                                    book.Close(True)
                                     break
                                 except Exception as e:
                                     book.Close(True)
                                     MsgBox("Make sure the invoice template and existing pdf for this invoice is closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice template or invoice pdf open",setIcon=QMessageBox.Critical)
                                     # print(e)
 
-                        tracktime(msg="Filled and pdfed all invoices")
-                        book.Close(True)
+                        # book.Close(True)
                         tracktime(msg="Closed invoice template")
                         # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
                         if excel.Workbooks.Count==0:
@@ -7514,44 +7581,83 @@ class FeesandFinancesWindow(QMainWindow):
                 except:
                     MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
             
-            # #Get all sheets in the Invs Tracking Sched that start with 'INVS-Year '
-            # while True:
-            #     try:
-            #         wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=True, data_only=True)
-            #         sheet_names=wb.sheetnames
-            #         sheet_names=[sheet for sheet in sheet_names if sheet.startswith("INVS-Year ")]
-            #         wb.close()
-            #         break
-            #     except IOError:
-            #         MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
-            # if sheet_names==[]:
-            #     MsgBox("No invoice tracking schedule found\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule not found",setIcon=QMessageBox.Critical)
-            #     return
-    
+            def funcOk():
+                try:
+                    if updateInvRadioBut.isChecked():
+                        if invoiceNoEdit.text() in [None,""]:
+                            MsgBox("Enter invoice no.", setWindowTitle="Error", setIcon = QMessageBox.Information)
+                            return
+                        invoice_no=invoiceNoEdit.text()
+                    this_admin_data=getFeesnAddressFromAdmin()
+                    if this_admin_data:
+                       if newInvRadioBut.isChecked():
+                            setInvoiceNo()
+                            print("Invoice no. set")
+                    #    fillandExportInvoiceTemplate(this_admin_data)
+
+                   
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            if path.exists(Invoices_Tracking_Schedule_xlsx):
+                #Get all sheets in the workbook that start with 'INVS-Year '
+                while True:
+                    try:
+                        wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=True, data_only=True)
+                        sheet_names=wb.sheetnames
+                        sheet_names=[sheet for sheet in sheet_names if sheet.startswith("INVS-Year ")]
+                        wb.close()
+                        break
+                    except IOError:
+                        MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
+            else:    
+                MsgBox("No invoice tracking schedule found\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule not found",setIcon=QMessageBox.Critical)
+                return
+
+            if sheet_names==[]:
+                MsgBox("No sheet with name starting with 'INVS-Year ' found in the invoice tracking schedule\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule sheet not found",setIcon=QMessageBox.Critical)
+                return
             curdate=QDate.currentDate()
             dialog=QDialog()
             dateEdit=QDateEdit()
             dateEdit.setDate(curdate)
             monthYearCombo=QComboBox()
-            invoiceNoEdit=QLineEdit()
-            invoiceNoEdit.setPlaceholderText("000")
-            invoiceNoEdit.setValidator(QRegExpValidator(QRegExp("[0-9]{3}")))
+            
             # Get from last two months till next month
-            monthYearCombo.addItems([curdate.addMonths(i).toString("MM/yyyy") for i in range(-5,2)])
+            months=[curdate.addMonths(i).toString("MM/yyyy") for i in range(-5,2)]
+            monthYearCombo.addItems(months)
+            monthYearCombo.setCurrentIndex(len(months)-2)
             # invs_sheetCombo=QComboBox()
+            invs_sheetCombo=QComboBox()
+            invs_sheetCombo.addItems(sheet_names)
+            invs_sheetCombo.setCurrentIndex(len(sheet_names)-1)
+            #New or updated radio button
+            newInvRadioBut=QRadioButton("New Invoice")
+            updateInvRadioBut=QRadioButton("Update")
+            invoiceNoEdit=QLineEdit()
+            invoiceNoEdit.setPlaceholderText("Invoice No.")
+            invoiceNoEdit.setValidator(QRegExpValidator(QRegExp("[0-9]{3}")))
+            newInvRadioBut.toggled.connect(lambda: invoiceNoEdit.setHidden((newInvRadioBut.isChecked())))
+            updateInvRadioBut.toggled.connect(lambda: invoiceNoEdit.setHidden(not(updateInvRadioBut.isChecked())))
+            newInvRadioBut.setChecked(True)
+            neworupdateVLayout=QGridLayout()
+            neworupdateVLayout.addWidget(newInvRadioBut,0,0)
+            neworupdateVLayout.addWidget(updateInvRadioBut,0,1)
+            neworupdateVLayout.addWidget(invoiceNoEdit,1,1,1,2)
 
             form=QFormLayout()
-            form.addRow("Date:",dateEdit)
-            form.addRow("Select Month:",monthYearCombo)
-            form.addRow("Invoice No:",invoiceNoEdit)
+            form.addRow("Date you're invoicing:",dateEdit)
+            form.addRow("Invoice for which Month:",monthYearCombo)
+            form.addRow("INVS Worksheet:",invs_sheetCombo)
+            form.addRow(neworupdateVLayout)
             buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            buttonBox.accepted.connect(getFeesnAddressFromAdmin)
+            buttonBox.accepted.connect(funcOk)
             buttonBox.rejected.connect(dialog.reject)
             form.addRow(buttonBox)
 
             dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
             dialog.setWindowTitle("Create Invoices")
             dialog.setLayout(form)
+            dialog.resize(300,150)
             dialog.exec()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -14205,7 +14311,9 @@ if __name__ == "__main__":
             
             Invoice_Template=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\RCDC- INV - Templates\RCDC - INV - Template - WOW.xlsx"
             Invoice_Issues=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\RCDC- INV - Issues"
-            Invoices_Tracking_Schedule_xlsx=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\Invoices Tracking Schedule.xlsx"
+            Invoices_Tracking_Schedule_xlsx=r"C:\Users\olumi\OneDrive\Documents\Acer\_Chunks\Invoices Tracking Schedule.xlsx"
+            # Invoices_Tracking_Schedule_xlsx=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Finances\Invoices\Invoices Tracking Schedule.xlsx"
+            
             #paths for icons
             newfolder_icon =userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\foldericon.ico"
             folder_icon =userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\folder-icon.ico"
@@ -14258,13 +14366,13 @@ if __name__ == "__main__":
 
         #     # # toremove (added for test)
             # activeProjectrow=43
-            # # # activeProjectrow=26 #SHJS
-            # # #     # activeProjectrow=88 #Paxton House
-            # projectwindow=ProjectWindow()
-            # feesandfinanceswindow = FeesandFinancesWindow()
-            # widget.addWidget(feesandfinanceswindow)
-            # widget.setCurrentWidget(feesandfinanceswindow)
-            # # newfeesdialog=NewFees_Dialog()
+            activeProjectrow=26 #SHJS
+            # #     # activeProjectrow=88 #Paxton House
+            projectwindow=ProjectWindow()
+            feesandfinanceswindow = FeesandFinancesWindow()
+            widget.addWidget(feesandfinanceswindow)
+            widget.setCurrentWidget(feesandfinanceswindow)
+            # newfeesdialog=NewFees_Dialog()
             # # widget.showMaximized() 
             # # newfeesdialog.show()
         # # #     widget.addWidget(projectwindow)
