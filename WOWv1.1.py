@@ -19,10 +19,10 @@ from PyQt5.QtWidgets import QTabWidget,  QDateEdit, QInputDialog, QRadioButton, 
     QStackedWidget, QTableWidget, QCalendarWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QMenu, QTableWidgetItem,QHeaderView, \
             QAbstractItemView, QLabel, QDialogButtonBox, QListWidget, QCheckBox, QFrame, QPushButton, QToolButton, QComboBox, QMessageBox, \
                 QDialog, QFormLayout, QGroupBox, QWhatsThis, QSizePolicy, QAbstractScrollArea, QDateTimeEdit, QTimeEdit, QSplitter
-from PyQt5.QtGui import QDragEnterEvent, QIcon, QKeySequence, QPixmap, QFont, QColor, QDropEvent, QRegExpValidator, QDoubleValidator, QFontDatabase, QCursor
+from PyQt5.QtGui import QDragEnterEvent, QIcon, QKeySequence, QPixmap, QFont, QColor, QDropEvent, QRegExpValidator, QDoubleValidator, QFontDatabase, QCursor, QPainter, QPen, QBrush
 from PyQt5.Qt import QRect
 # from PyQt5 import QtWebEngineWidgets
-from PyQt5.QtCore import QEvent, QItemSelection, QItemSelectionModel, Qt, QSize, QDate, QTimer, QRegExp, QTime, QDateTime, QDir
+from PyQt5.QtCore import QEvent, QItemSelection, QItemSelectionModel, Qt, QSize, QDate, QTimer, QRegExp, QTime, QDateTime, QDir, pyqtSignal, QLocale
 from fitz.fitz import TEXT_ALIGN_CENTER, TEXT_ALIGN_LEFT, TEXT_ALIGN_RIGHT
 
 validator2dp=QDoubleValidator()
@@ -121,6 +121,49 @@ def updateJsonData():
         #This displays any errors encountered as a msgbox rather just shutting down when there's error
         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
+def fetchAllResources(includeHolidays=False):
+    try:
+        def getHolidays():
+            try:
+                pass
+            except:
+                MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+        global Resources_df
+        all_resources=[]
+        if path.exists(users_jsons):
+            for folder in [usr for usr in listdir(users_jsons) if path.isdir(users_jsons+"\\"+usr+"\\Resources")]:
+                # #delete the folder
+                # rmtree(users_jsons+"\\"+folder+"\\Resources")
+                resourceFiles=[users_jsons+"\\"+folder+"\\Resources\\"+file for file in listdir(users_jsons+"\\"+folder+"\\Resources") if file.startswith("Rsc-") and file.endswith(".json")]
+                if path.exists(users_jsons+"\\"+folder+"\\Resources\\Completed"):
+                    completedFiles=[users_jsons+"\\"+folder+"\\Resources\\Completed\\"+file for file in listdir(users_jsons+"\\"+folder+"\\Resources\\Completed") if file.startswith("Rsc-") and file.endswith(".json")]
+                    resourceFiles=resourceFiles+completedFiles
+                for filepath in (resourceFiles):
+                    with open(filepath,'r') as json_file:
+                        data = json_load(json_file)
+                        data["filename"]=path.basename(filepath)
+                        all_resources.append(data)
+        holidays=getHolidays()
+        Resources_df= pd_DataFrame(all_resources)
+        if not Resources_df.empty: Resources_df.sort_values(by=["RscFor","OpenDate"], inplace=True)
+                # for file in listdir(users_jsons+"\\"+folder+"\\Resources"):
+                #     if file.startswith("Rsc-")  and file.endswith(".json"):
+                #         with open(users_jsons+"\\"+folder+"\\Resources\\"+file,'r') as json_file:
+                #             data = json_load(json_file)
+                #             data["filename"]=file  
+                #             self.resourcesByUser[folder].append(data)
+                #             if f"{data['ProjectNo']} - {data['ProjectName']}" not in self.resourcesByProject: self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"]=[]
+                #             self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"].append(data)
+                # for file in listdir(users_jsons+"\\"+folder+"\\Resources\\Completed"):
+                #     if file.startswith("Rsc-")  and file.endswith(".json"):
+                #         with open(users_jsons+"\\"+folder+"\\Resources\\Completed\\"+file,'r') as json_file:
+                #             data = json_load(json_file)
+                #             data["filename"]=file  
+                #             self.resourcesByUser[folder].append(data)
+                #             if f"{data['ProjectNo']} - {data['ProjectName']}" not in self.resourcesByProject: self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"]=[]
+                #             self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"].append(data)
+    except:
+        MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
 def storeDeletedActions(filepath,usr):
     try:
@@ -149,7 +192,6 @@ def avg_datetime(dates):
 # #incremental specifies if you want to save changes to the Src pdf path or you want to make a new pdf with path SaveAs
 #textBoxDict is the dictionary where you specify the annot subject and what text you want to put e.g {'Project Name':'REDS10', 'Rev':'P01',...}
 #doNotSave specifies if you want to Save the changes or not 
-
 def editPDF(Src, SaveAs, incremental=False, textBoxDict={}, doNotSave=False, align=TEXT_ALIGN_LEFT): 
     try:
         doc = fitz_open(Src)          #Open pdf to be editted
@@ -653,11 +695,1371 @@ class Admin_Dialog(QDialog):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-class ProjectsWidget(QWidget):
+class ProjectTeamTable(QGroupBox):
     def __init__(self):
         try:
             super().__init__()
+            # self.newMemberButton=QPushButton("Update")
+            # self.newMemberButton.setMaximumWidth(100)
+            # self.newMemberButton.clicked.connect(self.newMemberClicked)
+
+
+            self.table=QTableWidget(1,1)
+            self.table.columnLabels=["Team","   "]
+            self.table.setColumnCount(len(self.table.columnLabels))
+            # self.table.setHorizontalHeaderLabels(self.table.columnLabels)
+            self.table.horizontalHeader().setStyleSheet("""
+        QHeaderView::section {
+            border: 0px;
+            border-bottom: 1px solid #d6d9dc;
+            background-color: #f0f0f0;
+            padding-left: 4px;
+            border-top-right-radius: 7px;
+            border-top-left-radius: 7px;
+        }
+        """)
+            testdata=[{"Individual":"Olumide","Role":"Useless Mechanical Engineer"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"}]
+            # self.table.setStyleSheet("""QHeaderView{font-size:13px;}QTableWidget{ border:1px; font-family:"Gadugi"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8);border-bottom: 1px solid #eeeeee;}""")
+            self.table.setRowCount(len(testdata))
+            r=0
+            for usr in testdata:
+                self.table.setItem(r,self.table.columnLabels.index("Team"), QTableWidgetItem(usr["Individual"]))
+                self.table.setItem(r,self.table.columnLabels.index("   "), QTableWidgetItem(usr["Role"]))
+                r+=1
+            self.table.horizontalHeader().setVisible(False)
+            self.table.verticalHeader().setVisible(False)
+            # self.table.setMaximumHeight(200)
+            # self.table.setMaximumWidth(280)
+            self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self.table.resizeColumnToContents(0)
+            self.table.setColumnWidth(0,100)
+            self.table.setColumnWidth(1, 300)
+            self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+            self.table.itemDoubleClicked.connect(self.editTeamMember)
+            self.table.installEventFilter(self)
+            scrollbar_style = """
+            QScrollBar {
+                border: none;
+                background: #f0f0f0;
+                width: 8px;
+                margin: 10px 0px 10px 0px;
+            }
+
+            # QScrollBar::handle {
+            #     background: #c0c0c0;
+            #     min-height: 20px;
+            # }
+
+            # QScrollBar::add-line, QScrollBar::sub-line {
+            #     background: none;
+            # }
+
+            # QScrollBar::up-arrow, QScrollBar::down-arrow {
+            #     background: none;
+            # }
+
+            # QScrollBar::add-page, QScrollBar::sub-page {
+            #     background: none;
+            # }
+            """
+
+            # self.table.verticalScrollBar().setStyleSheet(scrollbar_style)
+            # self.table.horizontalScrollBar().setStyleSheet(scrollbar_style)
+
+            self.setTitle("Current Team")
+            self.setStyleSheet("QGroupBox { font-weight: bold; } ")  # Optional: Style the group box title
+
+            layout=QVBoxLayout()
+            # layout.addWidget(self.newMemberButton, alignment=Qt.AlignRight)
+            layout.addWidget(self.table)
+            self.setLayout(layout)
+            self.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #aaaaaa;
+                border-radius: 5px;
+                margin-top: 20px; /* leave space at the top for the title */
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                padding: 0 3px;
+                font-weight: bold;
+            }
+            """)
+            titlefont=QFont()
+            titlefont.setBold(True)
+            titlefont.setPointSize(9)
+            self.setFont(titlefont)
+            self.setMaximumHeight(200)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    
+    def eventFilter(self, source, event):
+        try:
+            if event.type() == QEvent.ContextMenu and source == self.table:
+                menu = QMenu()
+                selectedRows=[index.row() for index in self.table.selectionModel().selectedRows()]
+                if len(selectedRows)>0:
+                    if len(selectedRows)==1:
+                        menu.addAction("Edit").triggered.connect(lambda: self.editTeamMember(selectedRows[0]))
+                    menu.addAction("Delete",self.deleteTeamMember)
+                    menu.exec_(event.globalPos())
+                    return True
+
+            return super().eventFilter(source, event)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def newMemberClicked(self):
+        try:
+            pass
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def editTeamMember(self):
+        try:
+            pass
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def deleteTeamMember(self):
+        try:
+            pass
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class ResourceManager():
+    def __init__(self, include_toolbuttons=False, include_period=False,include_table=False, include_chart=False,refreshResources=None, project=None, include_usersFilter=False, include_statistics=False, updateDisplay=True):
+        try:
+            self.include_toolbuttons, self.include_period, self.include_table, self.include_chart, self.refreshResources, self.project, self.include_usersFilter, self.include_statistics= include_toolbuttons, include_period, include_table, include_chart, refreshResources, project, include_usersFilter, include_statistics
+            self.all_resources_df= Resources_df
+            if self.project:
+                self.project_resources_df= self.getRscForProject(self.project)
+          #Toolbuttons
+            if self.include_toolbuttons:
+                self.NewResourceButton=ToolButton(" New Resource ", icon=newaction_icon, icon_width=25, icon_height=25,  min_height=40, buttonStyle=Qt.ToolButtonTextBesideIcon, clicked=self.newResourceClicked)
+                self.AutoCompletefromBidButton=ToolButton(" Auto Complete\nfrom Bid ", icon_height=25,  min_height=40, buttonStyle=Qt.ToolButtonTextBesideIcon)
+                self.AutoCompletefromBidButton.setEnabled(False)
+                self.AutoCompleteQAButton=ToolButton(" Auto Complete\nQA ", icon_height=25,  min_height=40, buttonStyle=Qt.ToolButtonTextBesideIcon)
+                self.AutoCompleteQAButton.setEnabled(False)
+          #Users filter
+            if self.include_usersFilter:
+                self.usersFilterBox=QComboBox()
+                self.usersFilterBox.addItem("All users")
+                self.usersFilterBox.addItems(RCDC_employees)
+                if this_userdata: self.usersFilterBox.setCurrentText(this_userdata["initial"])
+                # self.usersFilterBox.setCurrentText("All users")
+                self.usersFilterBox.setStyleSheet("QComboBox{padding-left:20px; font-size: 16px;}")
+                self.usersFilterBox.setMinimumHeight(40)
+                self.usersFilterBox.setMaximumSize(200,60)
+                self.usersFilterBox.currentTextChanged.connect(self.updateAllDisplay)
+
+          #Period layouts
+            if self.include_period:
+                self.periodLayout=QGridLayout()
+                self.periodAllRadioButton=QPushButton("All")
+                self.periodAllRadioButton.setCheckable(True)
+                self.periodAllRadioButton.setChecked(True)
+                self.activePeriodButton=self.periodAllRadioButton
+                self.periodWeekRadioButton=QPushButton("Weekly")
+                self.periodMonthRadioButton=QPushButton("Monthly")
+
+
+                self.period_weeks=NavigationLayout(calendar=True)
+                firstweek = QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1)
+                self.period_weeks.dateEdit.setDate(firstweek)
+                self.period_weeks.dateEdit.dateChanged.connect(self.periodChanged)
+                # for count in range(30):
+                #     start= firstweek.addDays(count*7)
+                #     end = start.addDays(4)
+                #     if count==0: 
+                #         self.period_weeks.addItem("This week",start) 
+                #     elif end.year()==QDate.currentDate().year():
+                #         self.period_weeks.addItem(f"{start.toString('MMM dd')} - {end.toString('MMM dd')}",start) 
+                #     else:
+                #         self.period_weeks.addItem(f"{start.toString('MMM dd')} - {end.toString('MMM dd/yy')}",start)
+
+                self.period_months=QDateEdit()
+                self.period_months=NavigationLayout()
+                # self.period_months.addItems(["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"])
+                for count in range(-10,25):
+                    var= firstweek.addMonths(count)
+                    if var.year()==firstweek.year():
+                        self.period_months.addItem(var.toString("MMM"), var.toString("MM/yyyy"))
+                    else:
+                        self.period_months.addItem(var.toString("MMM/yy"), var.toString("MM/yyyy"))
+                self.period_months.itemsBox.setCurrentText(firstweek.toString("MMM"))
+                # self.period_months.addItemsWithDatas({"January":1,"February":2,"March":3,"April":4,"May":5,"June":6,"July":7,"August":8,"September":9,"October":10,"November":11,"December":12})
+                
+                self.period_months.itemsBox.currentIndexChanged.connect(self.periodChanged)
+                for chk in [self.periodAllRadioButton, self.periodWeekRadioButton, self.periodMonthRadioButton]:
+                    chk.setCheckable(True)
+                    chk.setFixedSize(100,30)
+                    chk.setStyleSheet("""QRadioButton{ padding: 5px; color: black; background-color: rgba(240,240,240,0.4);}
+                                        QRadioButton::checked{color: #2f2f2f; background: #c4dcf4; border: 1px solid #acccec;} """)#QRadioButton::indicator:checked{background-color: #2f2f2f;}
+                    chk.clicked.connect(lambda checked, button=chk: self.radioClicked(button))
+                for box in [self.period_weeks.dateEdit, self.period_months.itemsBox]:  
+                    box.setFixedSize(165,36)
+                    # box.setStyleSheet("QComboBox{padding-left:5px; font-size: 16px;}")
+                    box.setStyleSheet("""QComboBox, QDateEdit{font-size:16px; padding-left:10px; padding-right:10px; color:rgba(0, 0, 0,1);}
+                                      """)
+
+
+                self.periodLayout.addWidget(self.periodAllRadioButton,1,0)#,alignment=Qt.AlignCenter)
+                self.periodLayout.addWidget(self.periodWeekRadioButton,1,1)#,alignment=Qt.AlignCenter)
+                self.periodLayout.addWidget(self.periodMonthRadioButton,1,2)#,alignment=Qt.AlignCenter)
+                # self.periodLayout.addWidget(self.period_weeks,1,1,1,1)#,alignment=Qt.AlignLeft)
+                # self.periodLayout.addWidget(self.period_months,1,1,1,1)#,alignment=Qt.AlignLeft)
+                self.period_stackedWidget=QStackedWidget()
+                self.period_stackedWidget.addWidget(QWidget())
+                self.period_stackedWidget.addWidget(self.period_weeks)
+                self.period_stackedWidget.addWidget(self.period_months)
+                self.period_stackedWidget.setMaximumHeight(50)
+                self.periodLayout.addWidget(self.period_stackedWidget,0,0,1,4)#,alignment=Qt.AlignLeft)
+                self.periodLayout.setHorizontalSpacing(0)
+                self.periodLayout.setVerticalSpacing(5)
+                self.periodLayout.setColumnStretch(3,2)
+
+            # periodLayout.setSpacing(0)
             
+            self.resourcePeriodFilter=("All",None)
+          #Resources table and chart
+            if self.include_table:
+                self.resourceTable=ResourceTable(self.refreshResources)
+                
+                self.populateTable()
+                self.resourceTable.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            if self.include_chart:
+                self.resourceChart=ResourceChart()
+                self.resourceChart.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+          #Statistics
+            if self.include_statistics:
+                # self.busynessLabel=QLabel("Busyness:")
+                self.busynessValue=QLabel()
+                self.busynessValue.setFixedSize(170,40)
+                # self.busynessValue.setStyleSheet("QLabel{font-weight: bold; font-size: 15px;}")
+                self.busynessValue.setStyleSheet("""QLabel {
+                                                    color: #383838; 
+                                                    background-color: #E6E6E6; 
+                                                    border: 2px solid #C3C3C3; 
+                                                    border-radius: 4px;
+                                                    padding: 4px;
+                                                    font-family: 'Segoe UI', sans-serif;
+                                                    font-size: 14px; 
+                                                    qproperty-alignment: AlignCenter; 
+                                                }""")
+            if updateDisplay: self.updateAllDisplay()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+
+    def radioClicked(self, button):
+        try:
+            # print(button.text())
+            for radio in [self.periodAllRadioButton, self.periodWeekRadioButton, self.periodMonthRadioButton]:
+                radio.setChecked(radio is button)  
+            self.activePeriodButton=button.text()        
+            self.periodChanged()                   
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def periodChanged(self):
+        try:
+            period= self.activePeriodButton
+            if period=="All":
+                self.period_stackedWidget.setCurrentIndex(0)
+                self.resourcePeriodFilter=("All",None)
+                #update table
+            elif period=="Weekly":
+                self.period_stackedWidget.setCurrentIndex(1)
+                week=self.getFirstDayOfWeek(self.period_weeks.dateEdit.date()).toString("dd/MM/yyyy")
+                if self.resourcePeriodFilter==("Weekly",week): return
+                self.resourcePeriodFilter=("Weekly",week)
+                # week=self.period_weeks.itemsBox.currentData().toString("dd/MM/yyyy")#
+            elif period=="Monthly":
+                self.period_stackedWidget.setCurrentIndex(2)
+                self.resourcePeriodFilter=("Monthly",self.period_months.itemsBox.currentData())
+            self.updateAllDisplay()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def getFirstDayOfWeek(self, date):
+        try:
+            return date.addDays(-date.dayOfWeek() + 1)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def populateTable(self):
+        try:
+            # print("Populating table")
+            if self.project:
+                self.resourceTable.populateTable(self.project_resources_df.to_dict(orient='records'))
+            else:
+                self.resourceTable.populateTable(self.all_resources_df.to_dict(orient='records'))
+            
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def filterTable(self):
+        try:
+            # print("Filtering table")
+            ##This function filters the table based on the selected user and period
+            #Clear the resource search box             
+            self.resourceTable.resource_Search.blockSignals(True)
+            self.resourceTable.resource_Search.setText("")
+            self.resourceTable.resource_Search.blockSignals(False)
+
+            #Filter the table based on the selected user
+            if self.include_usersFilter:
+                text=self.usersFilterBox.currentText()
+            else:
+                text="All users"
+            # self.resourceTable.setColumnHidden(self.resourceTable.columnLabels.index("Project"),False)
+            if text=="All users":
+                self.resourceTable.setColumnHidden(self.resourceTable.columnLabels.index("Individual"),False) #show the individual column
+                rows=[i for i in range(self.resourceTable.rowCount())]
+                # self.actionsWidget.setActionLabel("All users")
+                # self.actionsWidget.WeekOverviewButton.setHidden(True)
+            else:
+                self.resourceTable.setColumnHidden(self.resourceTable.columnLabels.index("Individual"),True)
+                rows=[]
+                # self.actionsWidget.setActionLabel(text)
+                # self.actionsWidget.WeekOverviewButton.setHidden(False)
+            #Show resources that match the specified user in the filter dropdown
+            for row in range(self.resourceTable.rowCount()):                
+                self.resourceTable.setRowHidden(row, False)
+                if text != "All users":
+                    if self.resourceTable.item(row,self.resourceTable.columnLabels.index("Individual")).text() != text:
+                        self.resourceTable.setRowHidden(row, True)
+                    else:
+                        rows.append(row)
+            
+            period, when= self.resourcePeriodFilter
+            if period=="Weekly":
+                for row in rows:
+                    if when not in self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).data(257):
+                        self.resourceTable.setRowHidden(row,True)
+                    else:
+                        self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256)}")
+            elif period=="Monthly":
+                for row in rows:
+                    count= sum(1 for dat in self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).data(257) if dat[3:]==when)
+                    # if not list(filter(lambda x: when == x[3:],weeks)):
+                    if count<=0:
+                        self.resourceTable.setRowHidden(row,True)
+                    else:
+                        self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256) * count}")
+            else:
+                for row in rows:
+                    if self.resourceTable.isRowHidden(row)==False:
+                        # print(row, self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")))
+                        weeks= self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).data(257)
+                        if len(weeks)<=0:
+                            self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256)}")
+                        else:
+                            self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256) * len(weeks)}")
+            # self.actionsWidget.actionsProjectBox.blockSignals(True)
+            # self.actionsWidget.actionsProjectBox.setCurrentText("All projects")
+            # self.actionsWidget.actionsProjectBox.blockSignals(False)
+
+           
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def resetResources(self):
+        try:
+            #Reset the resources after they have been updated
+            self.all_resources_df= Resources_df
+            if self.project:
+                self.project_resources_df= self.getRscForProject(self.project)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def getRscForProject(self, project):
+        try:
+            #Get all resources for the specified project (if "ProjectNo - ProjectName" == project)
+            if self.all_resources_df.empty: return pd_DataFrame()
+            resources= self.all_resources_df[self.all_resources_df["ProjectNo"] + " - " + self.all_resources_df["ProjectName"] == project]
+            return resources
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def filterData(self, data):
+        try:
+            #Filter the data to get open resources based on the selected user and period and adjust the hours
+            df= data.copy()
+            if df.empty: return df
+            df= df[df["Status"]=="Open"]
+            if self.include_usersFilter:
+                user=self.usersFilterBox.currentText()
+                if user!="All users":
+                    df= df[df['RscFor']==user]
+            if df.empty: return df
+            period, when= self.resourcePeriodFilter
+            if period=="All":
+                df['Hours']=  df.apply(lambda x: len(x['Weeks']) * x['Hours'] if x['Weeks'] else x['Hours'], axis=1)
+            elif period=="Weekly":
+                df= df[df['Weeks'].apply(lambda x: when in x)]
+            elif period=="Monthly":
+                df['Weeks'] = df['Weeks'].apply(lambda x: [date for date in x if date[3:]==when])
+                df= df[df['Weeks'].map(len) > 0]
+                df['Hours'] = df['Hours'] * df['Weeks'].map(len)
+            elif period=="Look ahead":
+                return df
+            return df
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def updateAllDisplay(self):
+        try:
+            if self.include_table: self.filterTable()
+            if self.project:
+                filteredData= self.filterData(self.project_resources_df)
+            else:
+                filteredData= self.filterData(self.all_resources_df)
+            if self.include_chart: self.updateChart(filteredData)
+            if self.include_statistics: self.updateStatistics(filteredData)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def updateChart(self, df):
+        try:
+            # print(self.all_resources_df)
+            # self.projectResources=self.all_resources_df[self.all_resources_df.ProjectNo + " - " + self.all_resources_df.ProjectName == project]
+            # print(df)
+            if self.include_usersFilter:
+                self.resourceChart.updateChart(df, self.usersFilterBox.currentText(), period=self.resourcePeriodFilter[0], when=self.resourcePeriodFilter[1])
+            else:
+                period, when= self.resourcePeriodFilter
+                if period=="Look ahead":
+                    self.resourceChart.updateChart(df, lookAhead=True, period=self.resourcePeriodFilter[0], when=self.resourcePeriodFilter[1]) 
+                else:
+                    self.resourceChart.updateChart(df, "All users", period=self.resourcePeriodFilter[0], when=self.resourcePeriodFilter[1]) 
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def updateStatistics(self, df):
+        try:
+            # print(df)
+            if self.include_usersFilter:
+                user=self.usersFilterBox.currentText()
+            else:
+                user="All users"
+            if self.include_statistics:
+                # self.busynessValue.setHidden(True)
+                self.busynessValue.setText("")
+                if df.empty: return
+                period, when= self.resourcePeriodFilter
+                if period=="Weekly":
+                    if user=="All users":
+                        # busyness
+                        pass
+                    else:
+                        busyness= (df["Hours"].sum()/37.5)*100
+                        self.busynessValue.setHidden(False)
+                        self.busynessValue.setText(f"Busyness: {busyness:.1f}%")
+                # elif period=="Monthly":
+                #     #Get the total hours left for the month
+
+                #     if user=="All users":
+                #         # busyness
+                #         pass
+                #     else:
+                #         busyness= (df["Hours"].sum()/37.5)**100
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def newResourceClicked(self):
+        try:
+            if this_userdata==None: return
+            resourceDialog=ResourceDialog()
+            resourceDialog.newResource(oncomplete=self.refreshResources,project=self.project, person=this_userdata["initial"])
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    @staticmethod
+    def recoverResources(resourcesObjs, oncomplete=None):
+        try:
+            if this_userdata==None: return
+            for rsc in resourcesObjs:
+                rsc["Status"]="Open"
+                rsc["EditBy"]=this_userdata["initial"]
+                count=1
+                while path.exists(f"{users_jsons}\\{rsc['RscFor']}\\Resources\\Rsc-{this_userdata['initial']}-{rsc['ProjectNo']}-{count}.json"):
+                    count+=1
+                rscfilename= f"{users_jsons}\\{rsc['RscFor']}\\Resources\\Rsc-{this_userdata['initial']}-{rsc['ProjectNo']}-{count}.json"
+                oldfilename=rsc["filename"]
+                rsc.pop("filename",None)
+                with open(rscfilename,'w') as f: #create json file
+                    json_dump(rsc, f, indent=2)
+                if path.exists(users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\Completed\\"+oldfilename): #delete the file
+                    remove(users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\Completed\\"+oldfilename)
+            if oncomplete: oncomplete()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    @staticmethod
+    def completeResources(resourcesObjs, oncomplete=None):
+        try:
+            if this_userdata==None: return
+            for rsc in resourcesObjs:
+                completedFolder=users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\Completed"
+                if path.exists(completedFolder)==False: mkdir(completedFolder)
+                rsc["Status"]="Completed"
+                
+                oldfilename=rsc["filename"]
+                completedfilename=oldfilename
+                if path.exists(completedFolder+"\\"+completedfilename):
+                    completedfilename=completedfilename.replace(".json","")
+                    count=1
+                    while path.exists(completedFolder+"\\"+completedfilename+" - "+str(count)+".json"):
+                       count+=1 
+                    completedfilename=completedfilename+" - "+str(count)+".json"
+                rsc.pop("filename",None)
+                with open(completedFolder+"\\"+completedfilename,'w') as f: #create json file
+                    json_dump(rsc, f, indent=2)
+
+                if path.exists(users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\"+oldfilename): #delete the file
+                    remove(users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\"+oldfilename)
+            if oncomplete: oncomplete()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    @staticmethod
+    def deleteResources(resourcesPaths, oncomplete=None):
+        try:
+            if this_userdata==None: return
+            for resourcePath in resourcesPaths:
+                if path.exists(resourcePath):
+                    remove(resourcePath)
+            if oncomplete: oncomplete()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class ResourceDialog(QDialog):
+    def __init__(self):
+        try:
+            super().__init__()
+            self.personBox=QComboBox()
+            self.personBox.addItems([emp for emp in RCDC_employees if path.exists(users_jsons+"\\"+emp)])
+
+            self.projectBox=QComboBox()
+            for proj in project3name_dict: #Add lists of projects from the project3name_dict dicitonary
+                self.projectBox.addItem(proj,[project3name_dict[proj],proj.split(' - ',1)[0]])
+            self.projectBox.currentIndexChanged.connect(lambda: self.stageBox.setCurrentText(RIBAstages.get(self.projectBox.currentText(),"XX")))
+            self.weekBox=CheckableComboBox('Resource Weeks')
+            self.weekBox.setMaximumWidth(500)
+
+            self.hoursBox=QDoubleSpinBox()
+            self.hoursBox.setGroupSeparatorShown(True)
+            self.hoursBox.setRange(0,1000000)
+            self.hoursBox.setDecimals(1)
+            self.hoursBox.setSuffix("hr")
+
+            self.stageBox=QComboBox()
+            self.stageBox.addItems(["XX","01","02","03","04","05","06","07"])
+            self.stageBox.setEditable(True)
+
+            self.taskDescBox= QTextEdit()
+            self.buttonBox =QDialogButtonBox()
+            
+            form=QFormLayout()
+            form.addRow("Person:",self.personBox)
+            form.addRow("Project:",self.projectBox)
+            form.addRow("Week:",self.weekBox)
+            form.addRow("Hours:",self.hoursBox)
+            form.addRow("Stage:",self.stageBox)
+            form.addRow("Task Description:",self.taskDescBox)
+            form.addRow(self.buttonBox)
+            form.setSpacing(20)
+            
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            self.setWindowTitle("New Resource")
+            self.setLayout(form)
+            self.resize(600, 550)
+            # self.setMaximumSize(600, 550)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def newResource(self,oncomplete=None, project=None, person=None):
+        try:
+            def addResource(close=True,oncomplete=None):
+                try:
+                    if this_userdata!=None:
+                        if path.exists(f"{users_jsons}\\{self.personBox.currentText()}"):
+                            resourceFolder=f"{users_jsons}\\{self.personBox.currentText()}\\Resources"
+                            if path.exists(resourceFolder)==False:
+                                mkdir(resourceFolder)
+                            #create resource file
+                            count=1
+                            project= self.projectBox.currentText()
+                            projectno, projectname= project.split(' - ',1)
+                            while path.exists(f"{resourceFolder}\\Rsc-{this_userdata['initial']}-{projectno}-{count}.json"):
+                                count+=1
+                            rscfilename= f"{resourceFolder}\\Rsc-{this_userdata['initial']}-{projectno}-{count}.json"
+                            with open(rscfilename,'w') as f: #create json file
+                                obj= {
+                                    "RscFor": self.personBox.currentText(),
+                                    "RscBy": this_userdata["initial"],
+                                    "EditBy": this_userdata["initial"],
+                                    "ProjectNo": f"{projectno}",
+                                    "ProjectName": f"{projectname}",
+                                    "TaskDesc": self.taskDescBox.toPlainText(),
+                                    "Hours": self.hoursBox.value(),
+                                    "Weeks": [self.weekBox.itemData(i).toString("dd/MM/yyyy") for i in self.weekBox.checkedIndices],
+                                    "Stage": self.stageBox.currentText(),
+                                    "Status": "Open",
+                                    "OpenDate": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                                }
+                                json_dump(obj, f, indent=2)
+                            if close: self.close()
+                            if oncomplete: oncomplete()
+                    else:
+                        MsgBox("You are not logged in", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            
+
+            if project: 
+                self.projectBox.setCurrentText(project)
+                # self.projectBox.setEnabled(False)
+
+
+            if person: 
+                self.personBox.setCurrentText(person)
+
+            weeks=[QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1 + 7 * i) for i in range(50)]
+            for week in weeks:
+                self.weekBox.addCheckableItem(f"{week.toString('MMM dd')}-{week.addDays(4).toString('MMM dd')}",week) 
+            self.weekBox.handleItemPressed(2)#check the current week
+
+            addButton= QPushButton("Add")
+            addButton.clicked.connect(lambda:addResource(close=False,oncomplete=oncomplete))
+            self.buttonBox.addButton(addButton, QDialogButtonBox.ActionRole)
+            addAndCloseButton=QPushButton("Add and Close")
+            addAndCloseButton.clicked.connect(lambda:addResource(close=True,oncomplete=oncomplete))
+            self.buttonBox.addButton(addAndCloseButton,QDialogButtonBox.ActionRole)
+            self.exec()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)        
+
+    def editResource(self, resourceObj, oncomplete=None):
+        try:
+            def updateResource(oncomplete=None):
+                try:
+                    #if you're editting a resource the EditBy changes to you and the file name( you are xx in Rsc-xx-[count].json)
+                    if this_userdata!=None:
+                        #establish the file name and resourceFolder
+                        editBy=this_userdata["initial"]
+                        resourceFolder=users_jsons+"\\"+self.personBox.currentText()+"\\Resources"
+                        if path.exists(resourceFolder)==False: mkdir(resourceFolder) # create the folder if it doesn't exist
+                        count=1
+                        while path.exists(f"{resourceFolder}\\Rsc-{editBy}-{resourceObj['ProjectNo']}-{count}.json"): #whoever is editting the file is the EditBy and the xx in Rsc-xx-[count].json
+                            count+=1
+                        rscfilename= f"{resourceFolder}\\Rsc-{editBy}-{resourceObj['ProjectNo']}-{count}.json"
+                        with open(rscfilename,'w') as f: #create json file
+                            obj= {
+                                "RscFor": self.personBox.currentText(),
+                                "RscBy": resourceObj["RscBy"],
+                                "EditBy": editBy,
+                                "ProjectNo": resourceObj["ProjectNo"],
+                                "ProjectName": resourceObj["ProjectName"],
+                                "Hours": self.hoursBox.value(),
+                                "Stage": self.stageBox.currentText(),
+                                "TaskDesc": self.taskDescBox.toPlainText(),
+                                "Weeks": [self.weekBox.itemData(i).toString("dd/MM/yyyy") for i in self.weekBox.checkedIndices],
+                                "Status": resourceObj["Status"],
+                                "OpenDate": resourceObj["OpenDate"]
+                            }
+                            json_dump(obj, f, indent=2)
+                        oldrscfile= users_jsons+"\\"+resourceObj["RscFor"]+"\\Resources\\"+resourceObj["filename"]
+                        if path.exists(oldrscfile):
+                            remove(oldrscfile)
+                        self.close()
+                        if oncomplete: oncomplete()
+                    else:
+                        MsgBox("You are not logged in", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            #add existing data
+            self.personBox.setCurrentText(resourceObj["RscFor"])
+            #weeks
+            if resourceObj["Weeks"]!=None: #existing selected weeks
+                existingweeks=[QDate.fromString(week,"dd/MM/yyyy") for week in resourceObj["Weeks"]]
+                if existingweeks:
+                    curweek=min(existingweeks) #get the earliest week
+                    while curweek < QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1): #if the earliest week is before the current week
+                        self.weekBox.addCheckableItem(f"{curweek.toString('MMM dd')}-{curweek.addDays(4).toString('MMM dd')}",curweek) #add from the earliest week to the current week
+                        curweek=curweek.addDays(7)
+            weeks=[QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1 + 7 * i) for i in range(50)]
+            for week in weeks:
+                self.weekBox.addCheckableItem(f"{week.toString('MMM dd')}-{week.addDays(4).toString('MMM dd')}",week) 
+            for week in existingweeks:
+                self.weekBox.handleItemPressed(self.weekBox.findData(week))#check the current week    
+                
+            self.projectBox.setCurrentText(f"{resourceObj['ProjectNo']} - {resourceObj['ProjectName']}")
+            self.projectBox.setEnabled(False)
+            self.hoursBox.setValue(float(resourceObj["Hours"]))
+            self.stageBox.setCurrentText(resourceObj["Stage"])
+            self.taskDescBox.setText(resourceObj["TaskDesc"])
+            # self.weekBox.handleItemPressed(2)
+            saveButton= QPushButton("Save changes")
+            saveButton.clicked.connect(lambda:updateResource(oncomplete=oncomplete))
+            self.buttonBox.addButton(saveButton, QDialogButtonBox.ActionRole)
+            self.exec()
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class ResourceTable(QTableWidget):
+    def __init__(self, oncomplete=None):
+        try:
+            super().__init__()
+            self.oncomplete=oncomplete
+            self.columnLabels=["Individual","Project No.","Project Name", "Hours", "Task Description","Stage","Status","Open Date"]
+            # self.columnLabels=["Individual","Project Role","Project No.","Project Name", "Hours", "Task Description","Stage","Status","Open Date"]
+            # self.columnLabels=["Individual","Project No.","Project Name","Project Role", "Hours", "Task Description", "Next deadline"]
+            # self.setStyleSheet("""QHeaderView{font-size:13px;}QTableWidget{ border:1px; font-family:"Gadugi"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8);border-bottom: 1px solid #eeeeee;}""")
+            self.setStyleSheet("""QHeaderView{font-size:13px;}QTableWidget{ border:1px; font-family:"Gadugi"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8);border-bottom: 1px solid #eeeeee;}""")
+            self.setColumnCount(len(self.columnLabels))
+            self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.setHorizontalHeaderLabels(self.columnLabels)
+            self.setShowGrid(False) #disable grid lines
+            self.setSelectionBehavior(1)
+            self.verticalHeader().setVisible(False)
+            # self.setSortingEnabled(True)
+            self.sortTable()
+            # self.setAlternatingRowColors(True)
+
+            for i in range(len(self.columnLabels)):
+                self.horizontalHeader().setSectionResizeMode(i, QHeaderView.Interactive)
+            self.itemDoubleClicked.connect(self.dblclickedResource)
+
+            self.setColumnHidden(self.columnLabels.index("Open Date"),True)
+            self.installEventFilter(self)
+
+            # User filter box
+            self.userFilterBox=QComboBox()
+            self.userFilterBox.addItem("All users")
+            self.userFilterBox.addItems(RCDC_employees)
+            self.userFilterBox.setStyleSheet("QComboBox{padding-left:20px;}")
+            self.userFilterBox.setMinimumHeight(40)
+            self.userFilterBox.setFixedSize(200,40)
+            self.userFilterBox.currentTextChanged.connect(self.onUserFilterChange)#Connecting the change in the drop-down to its function
+
+            #Search box
+            self.resource_Search = QLineEdit()
+            self.resource_Search.setPlaceholderText("Search")
+            self.resource_Search.setStyleSheet("padding-left:20px;")
+            self.resource_Search.setMaximumSize(600,30)
+            self.resource_Search.textChanged.connect(self.onSearch)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def sortTable(self):
+        try:
+            self.sortByColumn(self.columnLabels.index("Individual"), Qt.AscendingOrder)
+            self.sortByColumn(self.columnLabels.index("Open Date"), Qt.DescendingOrder)
+            self.sortByColumn(self.columnLabels.index("Status"), Qt.DescendingOrder)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def populateTable(self, projectResources):
+        try:           
+            #Populate the table 
+            self.setSortingEnabled(False)
+            self.setRowCount(0)
+            self.setRowCount(len(projectResources))
+            r=0
+            for rsc in projectResources:
+                self.setItem(r,self.columnLabels.index("Individual"), QTableWidgetItem(rsc['RscFor']))
+                self.item(r,self.columnLabels.index("Individual")).setData(256,rsc['filename'])
+                self.item(r,self.columnLabels.index("Individual")).setData(257,rsc['RscBy'])
+                self.item(r,self.columnLabels.index("Individual")).setData(258,rsc['EditBy'])
+                self.setItem(r,self.columnLabels.index("Project No."), QTableWidgetItem(rsc['ProjectNo']))
+                self.setItem(r,self.columnLabels.index("Project Name"), QTableWidgetItem(rsc['ProjectName']))
+                hours= int(rsc['Hours']) if float(rsc['Hours']) == int(rsc['Hours']) else rsc['Hours']
+                self.setItem(r,self.columnLabels.index("Hours"),QTableWidgetItem(f"{hours}"))
+                self.item(r,self.columnLabels.index("Hours")).setData(256,hours)
+                self.item(r,self.columnLabels.index("Hours")).setData(257,rsc['Weeks'])
+                self.item(r,self.columnLabels.index("Hours")).setTextAlignment(Qt.AlignCenter)
+                self.setItem(r,self.columnLabels.index("Task Description"), QTableWidgetItem(rsc['TaskDesc']))
+                # print(self.isRowHidden(r))
+                self.setItem(r,self.columnLabels.index("Stage"), QTableWidgetItem(rsc['Stage']))
+                self.setItem(r,self.columnLabels.index("Status"), QTableWidgetItem(rsc['Status']))
+                # self.setItem(r,self.columnLabels.index("Open Date"), QTableWidgetItem(rsc['OpenDate']))
+                self.setItem(r,self.columnLabels.index("Open Date"), QTableWidgetItem(""))
+                # print(rsc['OpenDate'])
+                self.item(r,self.columnLabels.index("Open Date")).setData(0,QDateTime.fromString(rsc['OpenDate'],"dd/MM/yyyy HH:mm:ss"))
+
+                #Style the row
+                if rsc['Status']=="Open":
+                    for c in range(self.columnCount()):
+                        if self.item(r,c): self.item(r,c).setBackground(QColor(255, 236, 188,240))
+                elif rsc['Status']=="Completed":
+                    for c in range(self.columnCount()):
+                        if self.item(r,c): self.item(r,c).setBackground(QColor(192, 228, 212,200)) 
+                r+=1
+            self.setSortingEnabled(True)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def resourceObj(self, row):
+        try:
+            resourceObj={'RscFor':self.item(row,self.columnLabels.index("Individual")).text(),
+                        'RscBy':self.item(row,self.columnLabels.index("Individual")).data(257),
+                        'EditBy':self.item(row,self.columnLabels.index("Individual")).data(258),
+                        'ProjectNo':self.item(row,self.columnLabels.index("Project No.")).text(),
+                        'ProjectName':self.item(row,self.columnLabels.index("Project Name")).text(),
+                        'TaskDesc':self.item(row,self.columnLabels.index("Task Description")).text(),
+                        'Hours':self.item(row,self.columnLabels.index("Hours")).data(256),
+                        'Weeks':self.item(row,self.columnLabels.index("Hours")).data(257), #this is a list of weeks
+                        'Stage':self.item(row,self.columnLabels.index("Stage")).text(),
+                        'Status':self.item(row,self.columnLabels.index("Status")).text(),
+                        'OpenDate':self.item(row,self.columnLabels.index("Open Date")).data(0).toString("dd/MM/yyyy HH:mm:ss"),
+                        'filename':self.item(row,self.columnLabels.index("Individual")).data(256)
+                        }
+            return resourceObj
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def dblclickedResource(self, item):
+        try:
+            row=item.row()
+            if self.item(row,self.columnLabels.index("Status")).text()=="Open":
+                rscObj=self.resourceObj(row)
+                resourcedialog=ResourceDialog()
+                resourcedialog.editResource(rscObj, oncomplete=self.oncomplete)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def eventFilter(self, source, event): 
+        try:
+            if event.type() == QEvent.ContextMenu and source==self:
+                menu = QMenu() 
+                selectedrows=[i.row() for i in self.selectionModel().selectedRows() if self.isRowHidden(i.row())==False]
+                if len(selectedrows)>0:
+                    if this_userdata!=None: #and all([self.item(i,self.columnLabels.index("For")).text()==this_userdata["initial"] for i in selectedrows]): #if all selected actions are for this user
+                        #if all selected rows resources are open
+                        if all([self.item(i,self.columnLabels.index("Status")).text()=="Open" for i in selectedrows]):
+                            if len(selectedrows)==1: #edit resource - if only one resource is selected 
+                                menu.addAction("Edit", lambda: self.dblclickedResource(self.item(selectedrows[0],0)))
+                            # #assign to week
+                            # menu.addAction("Assign to Week", self.weekAssignAction)
+                            #complete resource
+                            menu.addAction("Complete", lambda: self.middleWare("Complete"))
+                        #recover resource - if all selected rows actions are completed
+                        elif all([self.item(i,self.columnLabels.index("Status")).text()=="Completed" for i in selectedrows]):
+                            menu.addAction("Recover", lambda: self.middleWare("Recover"))
+                        #delete action
+                        menu.addAction("Delete", lambda: self.middleWare("Delete"))  #Deleted resources are not recoverable and are not recorded in the log
+                        menu.exec_(event.globalPos())
+                        return True
+            return super().eventFilter(source, event)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def middleWare(self, action):
+        try:
+            selectedrows=[i.row() for i in self.selectionModel().selectedRows() if self.isRowHidden(i.row())==False]
+            count=len(selectedrows)
+            if count>0:
+                qm=QMessageBox()
+                if action=="Delete":
+                    ret = qm.warning(self,'Delete selected resource(s)', "Are you sure you want to delete these " + str(count) + " resource(s)?\n\nNote: Deleted resources are not recoverable or tracked anywhere", qm.Yes | qm.No)
+                    if ret==qm.Yes:
+                        toDelete=[]
+                        for i in selectedrows:
+                            status=self.item(i,self.columnLabels.index("Status")).text()
+                            if status=="Open":
+                                toDelete.append(users_jsons+"\\"+self.item(i,self.columnLabels.index("Individual")).text()+"\\Resources\\"+self.item(i,self.columnLabels.index("Individual")).data(256))
+                            elif status=="Completed":
+                                toDelete.append(users_jsons+"\\"+self.item(i,self.columnLabels.index("Individual")).text()+"\\Resources\\Completed\\"+self.item(i,self.columnLabels.index("Individual")).data(256))
+                        ResourceManager.deleteResources(toDelete, oncomplete=self.oncomplete)
+                else:
+                    resourcesObjs=[self.resourceObj(i) for i in selectedrows]
+                    if action=="Complete":
+                        ret = qm.warning(self,'Complete resource(s)', "Mark these " + str(count) + " resource(s) as completed?", qm.Yes | qm.No)
+                        if ret==qm.Yes:
+                            ResourceManager.completeResources(resourcesObjs, oncomplete=self.oncomplete)
+                    elif action=="Recover":
+                        ret = qm.warning(self,'Recover resource(s)', "Recover these " + str(count) + " resource(s)?", qm.Yes | qm.No)
+                        if ret==qm.Yes:
+                            ResourceManager.recoverResources(resourcesObjs, oncomplete=self.oncomplete)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def onUserFilterChange(self, text):
+        try:
+            #Clear the action search box             
+            self.resource_Search.blockSignals(True)
+            self.resource_Search.setText("")
+            self.resource_Search.blockSignals(False)
+            # self.setColumnHidden(self.columnLabels.index("Project"),False)
+            if text=="All users":
+                self.setColumnHidden(self.columnLabels.index("Individual"),False) #show the actionfor column
+                # self.actionsWidget.setActionLabel("All users")
+            else:
+                self.setColumnHidden(self.columnLabels.index("Individual"),True)
+                # self.actionsWidget.setActionLabel(text)
+            #Show actions that match the specified item in the filter dropdown
+        
+            for action in range(self.rowCount()):
+                self.setRowHidden(action, False)
+                if text != "All users":
+                    if self.item(action,self.columnLabels.index("Individual")).text() != text:
+                        self.setRowHidden(action, True)
+            # self.updateActionsChart(text)
+            
+            # self.actionsWidget.actionsProjectBox.blockSignals(True)
+            # self.actionsWidget.actionsProjectBox.setCurrentText("All projects")
+            # self.actionsWidget.actionsProjectBox.blockSignals(False)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def onSearch(self):
+        try:
+            # if there's any input in the search box, set dropdown box value to 'All users'
+            self.userFilterBox.blockSignals(True)
+            self.userFilterBox.setCurrentIndex(0)
+            
+            self.userFilterBox.blockSignals(False)
+            count=0
+            if self.resource_Search.text()=='':
+                #if search box is empty, show all items in table
+                for i in range(self.rowCount()): 
+                    self.setRowHidden(i,False)
+                    count+=1
+            else:
+                #if search box has any text, show rows containing that text
+                for i in range(self.rowCount()): self.setRowHidden(i,True)
+                for i in range(self.rowCount()):
+                    for j in range(self.columnCount()):
+                        if self.item(i,j) !=None and self.resource_Search.text().lower() in self.item(i,j).text().lower():
+                            self.setRowHidden(i, False) 
+                            count+=1
+                            break
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class ResourceChart(QWidget):
+    def __init__(self):
+        try:
+            super().__init__()
+            # self.resources=resources
+            # plt.style.use('seaborn')
+            # self.setMinimumWidth(1000)
+            self.layout = QVBoxLayout(self)
+            self.canvas = FigureCanvas()
+            self.layout.addWidget(self.canvas)
+
+            self.toolbar = NavigationToolbar(self.canvas)
+            toolbar_elements = self.toolbar.children()
+
+            #hide the unwanted toolbar elements
+            toolbar_elements[3].setVisible(False) #hide the home button
+            # toolbar_elements[11].setVisible(False) #hide pan button
+            toolbar_elements[13].setVisible(False) #hide zoom button
+            toolbar_elements[15].setVisible(False) #hide subplots button
+            toolbar_elements[17].setVisible(False) #hide customize button
+            # toolbar_elements[17].setVisible(False) #hide save button
+            self.layout.addWidget(self.toolbar)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def updateChart(self, resources_df, user="All users", lookAhead=False, period=None, when=None):
+        try:
+            # plt.close()
+            df=resources_df.copy()
+            self.canvas.figure.clear()
+            if lookAhead:
+                self.updateChartForLookAhead(df)
+            elif user=="All users":
+                self.updateChartForAll(df, period, when)
+            else:
+                self.updateChartForUser(df, period, when, user)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def updateChartForAll(self, df, period, when):
+        try:            
+            #if there are no resources, empty the chart
+            if len(df)==0:
+                self.canvas.draw()
+                return
+            df=df.sort_values(['RscFor'])
+            df=df.reset_index(drop=True)
+            users_hours = df.groupby('RscFor').Hours.sum()
+            # df.index.name = 'Index'
+            ax= self.canvas.figure.subplots()
+
+            # # Plot the horizontal stacked bar chart
+            # pivot_df.plot(kind='barh', stacked=True, ax=ax)
+            if len(users_hours)<=10:
+                cmap = plt.get_cmap('tab10')
+            else:
+                cmap = plt.get_cmap('tab20')
+            # cmap = plt.get_cmap('Set3')
+
+            ax.barh(users_hours.index, users_hours, color=cmap.colors, alpha=0.7)
+            ax.set_xlim(0, users_hours.max()+10)
+
+            # Add labels and title
+            ax.set_xlabel('Hours')
+            ax.set_ylabel('User')
+            if period=="Weekly":
+                ax.set_title(f'Team Weekly Hours - {when}')
+                ax.axvline(x=37.5, color='r', linestyle='--', label='Full Time (37.5 hours)')
+            elif period=="Monthly":
+                ax.set_title(f'Team Monthly Hours - {datetime.strptime(when, "%m/%Y").strftime("%B %Y")}')
+            else:
+                ax.set_title('Team Overall Hours')
+            # # ax.grid(True)
+            # # Custom legend
+            # # Create a list of labels from 'TaskDesc' corresponding to the order in pivot_df
+            # task_labels = [df.loc[df.index == idx, 'TaskDesc'].values[0] for idx in pivot_df.columns]
+
+            # # Create a custom legend
+            # ax.legend(task_labels, title='Task Description')
+            self.canvas.draw()
+
+            # # Show the plot
+            # plt.tight_layout()
+            # plt.show()
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def updateChartForUser(self, df, period, when,user="All users"):
+        try:
+            # plt.close()
+            if len(df)==0:
+                self.canvas.draw()
+                return
+            df=df.sort_values(['OpenDate'])
+            df=df.reset_index(drop=True)
+            df['CumulativeHours'] = df['Hours'].cumsum() #Create a new column for cumulative hours
+
+            # maxhours=df['Cumulative Hours'].max() #Get the maximum cumulative hours
+            # maxhours=df.groupby('RscFor')['CumulativeHours'].max() #Get the maximum cumulative hours for each resource
+
+            df['StartHour'] = df['CumulativeHours'] - df['Hours'] #Create a new column for the start hour of each resource
+
+            ax= self.canvas.figure.subplots()
+
+            #get set of projects
+            var= df['ProjectName'].unique()
+            if len(var)<=10:
+                cmap = plt.get_cmap('tab10')
+            else:
+                cmap = plt.get_cmap('tab20')
+            color_dict= {proj: cmap(i% cmap.N) for i, proj in enumerate(var)}
+            df['color'] = df['ProjectName'].map(color_dict)
+
+            ax.barh(df.index,df.Hours, left=df.StartHour, color=df.color, edgecolor='black', linewidth=0.5, height=1.0, alpha=0.7,picker=4)
+            ax.invert_yaxis()  # labels read top-to-bottom
+            for idx, row in df.iterrows():
+                txt=ax.text(row.StartHour+0.3, idx, row.TaskDesc, fontsize = 9, alpha=0.8, va='center')#),fontweight='bold')
+                # txt.set_path_effects([path_effects.Stroke(linewidth=0.5, foreground='white'), path_effects.Normal()])
+                # txt.set_bbox(dict(facecolor='white', alpha=0.1, edgecolor='white'))
+                txt.set_clip_on(True)
+
+            # grid lines
+            ax.set_axisbelow(True)
+            ax.xaxis.grid(color='gray', linestyle='dashed', alpha=0.2, which='both')
+            ax.format_coord = lambda x, y: f"Hours: {x:.2f}" #Show the hours when hovering over the plot
+
+            # # ticks
+            maxhours= df.CumulativeHours.max()
+            if period=="Weekly" and maxhours<37.5: maxhours=27.5
+            
+            if maxhours<=100:
+                xticks = np_arange(0, maxhours+10, 10)
+            else:
+                xticks = np_arange(0, maxhours+100, 100)
+            # xticks= df.CumulativeHours.unique()
+            # xticks_minor = np_arange(0, df.CumulativeHours.max()+1, 1)
+            ax.set_xticks(xticks)
+            # ax.set_xticks(xticks_minor, minor=True)
+            # ax.set_xticklabels(xticks_labels, fontsize=8)
+            ax.set_yticks([])
+            ax.set_ylabel("Resources")
+            ax.set_xlabel("Hours")
+            if period=="Weekly":
+                ax.set_title(f'{user} Weekly Hours - {when}')
+                ax.axvline(37.5, color='green', linestyle='--')
+            elif period=="Monthly":
+                ax.set_title(f'{user} Monthly Hours - {datetime.strptime(when, "%m/%Y").strftime("%B %Y")}')
+            else:
+                ax.set_title(f'{user} Overall Hours')
+            # my_xlim=(0,30)
+            # ax.set_xlim(my_xlim)
+            #Legends based on the project
+            # ax.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.7, 0.2))
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0 + box.height * 0.18,
+                            box.width, box.height * 0.9])
+            # ax.set_position([box.x0, box.y0 + box.height * 0.012,
+            #                 box.width, box.height])
+            legend_elements = [Patch(facecolor=color, label=project) for project, color in color_dict.items()]
+            # Put a legend below current axis
+            ax.legend(handles=legend_elements,loc='upper center', bbox_to_anchor=(0.5, -0.1),
+                    fancybox=True, shadow=True, ncol=3, fontsize=9)
+            self.canvas.draw()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def updateChartForLookAhead(self, df):
+        try:
+            if df.empty: 
+                self.canvas.draw()
+                return
+            df=df.explode("Weeks").dropna()
+            #if there are no resources, empty the chart
+            if len(df)==0:
+                self.canvas.draw()
+                return
+            # exploded_weeks= df.explode("Weeks").dropna()
+            df["Weeks"]= df['Weeks'].apply(lambda x: datetime.strptime(x, "%d/%m/%Y").date())
+            grouped= df.groupby(['Weeks', 'RscFor'])['Hours'].sum().reset_index()
+            pivot_table = grouped.pivot(index='Weeks', columns='RscFor', values='Hours').fillna(0)
+
+            ax= self.canvas.figure.subplots()
+
+            if len(pivot_table.columns)<=10:
+                cmap = plt.get_cmap('tab10')
+            else:
+                cmap = plt.get_cmap('tab20')
+
+            # colors = {user: cmap(i% cmap.N) for i, user in enumerate(pivot_table.columns)}
+
+            pivot_table.plot(kind='barh', stacked=True, ax=ax, edgecolor='black', linewidth=0.5, color=cmap.colors, alpha=0.7)
+            ax.set_xlabel('Hours')
+            ax.set_ylabel('Week')
+
+            ax.set_title(f"Resource for the next {len(pivot_table.index)} weeks")
+            ax.set_xlim(0, pivot_table.sum(axis=1).max()+10)
+            ax.set_yticklabels([week.strftime("%b %d") for week in pivot_table.index])
+            # for index, row in pivot_table.iterrows():
+            #     bottom = 0
+            #     for user, value in row.items():
+            #         ax.barh(index, value, height=6, left=bottom, color=colors[user], edgecolor='black', linewidth=0.5) 
+    
+            #         # ax.barh(i, value, height=0.4, left=left, color=colors[col], edgecolor='black', linewidth=0.5) 
+            #         bottom += value
+
+
+            ax.invert_yaxis()  # labels read top-to-bottom
+        
+            self.canvas.draw()
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class ProjectsDeadlineWidget(QWidget):
+    def __init__(self):
+        try:
+            super().__init__()
+            self.project=self.projectadminfolder=None
+            #New deadline button
+            self.NewDeadlineButton=QToolButton()
+            self.NewDeadlineButton.setText("New deadline")
+            self.NewDeadlineButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            self.NewDeadlineButton.setIcon(QIcon(newaction_icon))
+            self.NewDeadlineButton.setIconSize(QSize(25, 25))
+            self.NewDeadlineButton.setStyleSheet("font-size:14px;")
+            self.NewDeadlineButton.clicked.connect(lambda: self.updateDeadline(None))#Connecting the button to its function when clicked
+            self.NewDeadlineButton.setMinimumHeight(30)
+            self.NewDeadlineButton.setCursor(QCursor(Qt.PointingHandCursor))
+            QShortcut(QKeySequence('Ctrl+D'),self).activated.connect(lambda: self.updateDeadline(None))
+            #Deadline table
+            self.deadlineTable=QTableWidget(0,3)
+            self.deadlineTable.verticalHeader().setVisible(False)
+            self.deadlineTable.setSelectionBehavior(QAbstractItemView.SelectRows)
+            self.deadlineTable.itemDoubleClicked.connect(self.deadlineTableDblClicked)
+            # self.deadlineTable.setSortingEnabled(True)
+
+            MainLayout=QVBoxLayout()
+            MainLayout.addWidget(self.NewDeadlineButton)
+            MainLayout.addWidget(self.deadlineTable)
+            self.setLayout(MainLayout)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def eventFilter(self, source, event):
+        try:
+            if event.type() == QEvent.ContextMenu and source == self.deadlineTable:
+                menu = QMenu()
+                selectedRows=[index.row() for index in self.deadlineTable.selectionModel().selectedRows()]
+                if len(selectedRows)>0:
+                    if len(selectedRows)==1:
+                        menu.addAction("Edit").triggered.connect(lambda: self.updateDeadline(selectedRows[0]))
+                    menu.addAction("Delete",self.deleteDeadline)
+                    menu.exec_(event.globalPos())
+                    return True
+
+            return super().eventFilter(source, event)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            
+
+    def populateTable(self, project):
+        try:
+            self.project=project
+            self.projectadminfolder= Project_Folders_dst+"\\"+self.project+"\\2 Project Admin\\0 Project Data"
+            self.deadlineTable.clear()
+            self.deadlineTable.setRowCount(0)
+            self.columnLabels=["Activity","Deadline"]#,"Status"]
+            if self.project!=None and path.exists(self.projectadminfolder):
+                if path.exists(self.projectadminfolder+"\\Activities")==False:
+                    mkdir(self.projectadminfolder+"\\Activities")
+                self.activeActivities=[]
+                for activityfile in listdir(self.projectadminfolder+"\\Activities"):
+                    with open(self.projectadminfolder+"\\Activities\\"+activityfile, 'r') as f:
+                        activity=json_load(f)
+                        activity["filename"]=activityfile
+                        self.activeActivities.append(activity)
+                self.activeActivities.sort(key=lambda x: datetime.strptime(x["Deadline"], "%d/%m/%Y"))
+                self.deadlineTable.setColumnCount(len(self.columnLabels))
+                self.deadlineTable.setHorizontalHeaderLabels(self.columnLabels)
+                self.deadlineTable.setRowCount(len(self.activeActivities))
+                for row in range(len(self.activeActivities)):
+                    item=QTableWidgetItem(self.activeActivities[row]["Activity"])
+                    item.setToolTip(self.activeActivities[row]["Activity"])
+                    item.setData(256, self.activeActivities[row]["filename"])
+                    self.deadlineTable.setItem(row,self.columnLabels.index("Activity"),item)
+
+                    # self.deadlineTable.setItem(row,self.columnLabels.index("Hours"),QTableWidgetItem(str(activity["Hours"])+"hrs"))
+                    activitydeadline=self.activeActivities[row]["Deadline"]
+                    if activitydeadline not in ["",None]:
+                        deadlineitem=QTableWidgetItem(activitydeadline)
+                        self.deadlineTable.setItem(row,self.columnLabels.index("Deadline"),deadlineitem)
+                        # self.deadlineTable.item(row,self.columnLabels.index("Deadline")).setData(Qt.DisplayRole, QDate(int(activitydeadline.split("/")[2]),int(activitydeadline.split("/")[1]),int(activitydeadline.split("/")[0])))
+                        # print(f"{self.activeActivities[row]['Activity']} {activitydeadline}")
+                    # self.deadlineTable.setItem(row,self.columnLabels.index("Status"),QTableWidgetItem(self.activeActivities[row]["Status"])
+                
+                self.NewDeadlineButton.setEnabled(True)
+                self.deadlineTable.installEventFilter(self)
+            else:
+                self.NewDeadlineButton.setEnabled(False)
+                self.deadlineTable.setRowCount(1)
+                self.deadlineTable.setColumnCount(1)
+                self.deadlineTable.setItem(0, 0,QTableWidgetItem("Path '2 Project Admin/0 Project Data' not found"))
+                self.deadlineTable.setColumnHidden(1,True)
+                self.deadlineTable.setColumnHidden(2,True)
+                self.deadlineTable.setColumnHidden(3,True)
+                self.deadlineTable.item(0,0).setBackground(QColor("#EE1111"))
+                self.deadlineTable.setHorizontalHeaderLabels([""])
+                self.deadlineTable.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeToContents)
+                self.deadlineTable.removeEventFilter(self)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    
+    def deleteDeadline(self):
+        try:
+            selectedRows=[index.row() for index in self.deadlineTable.selectionModel().selectedRows()]
+            if len(selectedRows)>0:
+                for row in selectedRows:
+                    activityfile=self.projectadminfolder+"\\Activities\\"+self.deadlineTable.item(row,self.columnLabels.index("Activity")).data(256)
+                    if path.exists(activityfile):
+                        remove(activityfile)
+                self.populateTable(self.project)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def deadlineTableDblClicked(self):
+        try:
+            selectedRows=[index.row() for index in self.deadlineTable.selectionModel().selectedRows()]
+            if len(selectedRows)==1 and self.deadlineTable.item(selectedRows[0],self.columnLabels.index("Activity")).data(256)!=None:
+                row=selectedRows[0]
+                self.updateDeadline(row)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def updateDeadline(self, index=None):
+        try:      
+            self.deadlineEdit=QTextEdit()
+            self.deadlineEdit.setPlaceholderText("Enter deadline")
+            self.deadlineEdit.setStyleSheet("QTextEdit{border:1px solid #90a9c6; border-radius:4px;}")
+
+            # self.hoursBox=QSpinBox()
+            # self.hoursBox.setSuffix("hrs")
+            # self.hoursBox.setRange(0, 1000)
+            # self.hoursBox.setValue(1)
+            # self.minutesBox=QSpinBox()
+            # self.minutesBox.setSuffix("m")
+            # self.minutesBox.setRange(0, 59)
+            # timeLayout=QHBoxLayout()
+            # timeLayout.addWidget(self.hoursBox)
+            # timeLayout.addWidget(self.minutesBox)
+
+            # self.hoursBox.setStyleSheet("QDoubleSpinBox{border:1px solid #90a9c6; border-radius:4px;}")
+            self.dateEdit=QDateEdit()
+            self.dateEdit.setDate(QDate.currentDate())
+            self.dateEdit.setCalendarPopup(True)
+            # self.dateEdit.setStyleSheet("QDateEdit{border:1px solid #90a9c6; border-radius:4px;}")
+            self.newdialog=QDialog()
+
+
+            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttonBox.rejected.connect(self.newdialog.reject)
+            if index!=None: #if the user is editing an existing deadline
+                self.deadlineEdit.setText(self.deadlineTable.item(index,self.columnLabels.index("Activity")).text())
+                self.dateEdit.setDate(QDate.fromString(self.deadlineTable.item(index,self.columnLabels.index("Deadline")).text(), "dd/MM/yyyy"))
+                buttonBox.accepted.connect(lambda: self.funcOK(index))
+            else:
+                buttonBox.accepted.connect(self.funcOK)
+
+            form=QFormLayout()
+            form.addRow(self.deadlineEdit)
+            form.addRow("Deadline date",self.dateEdit)
+            form.addRow(buttonBox)
+            self.newdialog.setLayout(form)
+            
+            self.newdialog.setWindowFlags(self.newdialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            self.newdialog.setWindowTitle("New deadline")
+            self.newdialog.exec()
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def funcOK(self, index=None):
+        try:
+            if self.deadlineEdit.toPlainText().strip()!="":
+                if index!=None:
+                    activityfile=self.projectadminfolder+"\\Activities\\"+self.deadlineTable.item(index,self.columnLabels.index("Activity")).data(256)
+                else:
+                    if path.exists(self.projectadminfolder+"\\Activities")==False:
+                        mkdir(self.projectadminfolder+"\\Activities")
+                    #create activity file
+                    count=1
+                    while path.exists(self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"):
+                        count+=1
+                    activityfile=self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"
+                with open(activityfile, 'w') as f: #create activity file
+                    obj= {
+                        "Activity": self.deadlineEdit.toPlainText().strip(),
+                        "Deadline": self.dateEdit.text(),
+                        "Status": "Open"
+                    }
+                    json_dump(obj, f, indent=2)
+                self.populateTable(self.project)
+
+                self.newdialog.accept()
+            else:
+                MsgBox("Please enter deadline details", setWindowTitle="Can't proceed", setIcon = QMessageBox.Information)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class ProjectsWidget(QWidget):
+    def __init__(self, adminbuttons):
+        try:
+            super().__init__()
             self.NewProjectButton = ToolButton("New project", icon=newfolder_icon, icon_width=37, icon_height=45, min_width=83, clicked=self.NewProjectClicked)
             QShortcut(QKeySequence('Ctrl+N'),self).activated.connect(self.NewProjectClicked) #setting a short key for new project
             
@@ -666,24 +2068,6 @@ class ProjectsWidget(QWidget):
             self.FinanceButton.setMenu(menu)
             self.FinanceButton.setPopupMode(QToolButton.InstantPopup)
             self.invoiceaction=menu.addAction("Create Invoices", self.CreateInvoicesClicked)
-
-            self.RefreshButton = ToolButton(" Refresh ", icon=refresh_icon, icon_width=40, icon_height=35)
-
-            self.ManagementButton = ToolButton(" Management ", icon=management_icon, icon_width=50, icon_height=35, min_width=100)
-            
-            menu=QMenu()
-            if this_userdata==None:
-                self.UserProfileButton = ToolButton("  ", icon=user_icon, icon_width=45, icon_height=50, min_width=60, styleSheet="font-size:13px;border:0px; background:white; border-radius:4px;")
-                self.edituser=menu.addAction("Select user")
-            else:
-                self.UserProfileButton = ToolButton(this_userdata["user"], icon=user_icon, icon_width=45, icon_height=50, min_width=60, styleSheet="font-size:13px;border:0px; background:white; border-radius:4px;")
-                self.edituser=menu.addAction("Change user")
-                if "password" in this_userdata:
-                    self.editpassword=menu.addAction("Change password")
-                else:
-                    self.editpassword=menu.addAction("Set password")
-            self.UserProfileButton.setMenu(menu)
-            self.UserProfileButton.setPopupMode(QToolButton.InstantPopup)
 
             global projectsTable, activeProjectrow
           
@@ -841,15 +2225,15 @@ class ProjectsWidget(QWidget):
             
             #Project Info Form
             infoFormLayout=QFormLayout()
-            ldlayout=QHBoxLayout()
-            ldlayout.addWidget(slctdProjectLeadLabel)
-            ldlayout.addWidget(self.slctdProjectLead)
-            ldlayout.addSpacing(20)
-            ldlayout.addWidget(slctdProjectDirectorLabel)
-            ldlayout.addWidget(self.slctdProjectDirector)
-            ldlayout.addStretch(1)
-            ldlayout.setSpacing(0)
-            infoFormLayout.addRow(ldlayout)
+            ld_dir_layout=QHBoxLayout()
+            ld_dir_layout.addWidget(slctdProjectLeadLabel)
+            ld_dir_layout.addWidget(self.slctdProjectLead)
+            ld_dir_layout.addSpacing(20)
+            ld_dir_layout.addWidget(slctdProjectDirectorLabel)
+            ld_dir_layout.addWidget(self.slctdProjectDirector)
+            ld_dir_layout.addStretch(1)
+            ld_dir_layout.setSpacing(0)
+            infoFormLayout.addRow(ld_dir_layout)
             infoFormLayout.addRow(slctdProjectTeamLabel,self.slctdProjectTeam)
             infoFormLayout.addRow(slctdProjectStageLabel,self.slctdProjectStage)
             hl = QHBoxLayout()
@@ -877,44 +2261,38 @@ class ProjectsWidget(QWidget):
                 background: rgb(245, 245, 245); 
                 color: rgba(0,0,0,1);
                 }""")
+            
+            self.rscManager=ResourceManager(include_chart=True, include_period=True, updateDisplay=False)
 
-
-            projectActionsTabWidget=QTabWidget()
-            projectActionsTabWidget.setStyleSheet("QTabBar::tab{padding:5px; background:rgb(255, 255, 255); }")
-
-            projectActionsLayout=QVBoxLayout()
-            projectActionsLayout.addWidget(projectActionsTabWidget)
-            projectsActionsWidget=QWidget()
-            projectsActionsWidget.setLayout(projectActionsLayout)
-            self.projectInfoTabWidget.addTab(projectsActionsWidget,"Actions")
+            # projectResourcesWidget=QWidget()
+            # projectResourcesWidget= self.rscManager.resourceChart
+            # projectResourcesWidget.setLayout(projectActionsLayout)
+            self.projectInfoTabWidget.addTab(self.rscManager.resourceChart,"Resources")
 
             #Projects Deadlines
-            self.projectsDeadlineWidget=ProjectsDeadlineWidget()
-            self.projectInfoTabWidget.addTab(self.projectsDeadlineWidget,"Deadlines")
-            # self.projectInfoTabWidget.addTab(QWidget(),"Project Details")
-            # self.projectInfoTabWidget.addTab(QWidget(),"Documents")
-            # self.projectInfoTabWidget.addTab(QWidget(),"Finance")
+            # self.projectsDeadlineWidget=ProjectsDeadlineWidget()
+            # self.projectInfoTabWidget.addTab(self.projectsDeadlineWidget,"Deadlines")
 
           #Page Layouts
-            projectsLayout=QVBoxLayout()
-            # projectsLayout.addWidget(self.ChangeStartTimeButton, 0, 1, Qt.AlignRight)
-            projectsLayout.addWidget(self.projectfilterOptions)
-            projectsLayout.addWidget(self.project_search)
-            projectsLayout.addWidget(projectsTable)
-            projectsLayout.addWidget(self.projectsCountLabel)
+            projectsTableLayout=QVBoxLayout()
+            # projectsTableLayout.addWidget(self.ChangeStartTimeButton, 0, 1, Qt.AlignRight)
+            projectsTableLayout.addWidget(self.projectfilterOptions)
+            projectsTableLayout.addWidget(self.project_search)
+            projectsTableLayout.addWidget(projectsTable)
+            projectsTableLayout.addWidget(self.projectsCountLabel)
 
             projectsInfoLayout=QVBoxLayout()
             # projectsInfoLayout.addSpacing(30)
             projectsInfoLayout.addLayout(self.slctdProjectLabelLayout)#, Qt.AlignCenter)
             projectsInfoLayout.addWidget(infoFormWidget)
-            projectsInfoLayout.addWidget(self.projectInfoTabWidget)
+            projectsInfoLayout.addWidget(self.projectInfoTabWidget,2)
             # projectsInfoLayout.addStretch()
-            projectsInfoLayout.setSpacing(15)
+            projectsInfoLayout.setSpacing(10)
 
-            # projectsLayout.setVerticalSpacing(5)
-            # projectsLayout.setHorizontalSpacing(30)
+            # projectsTableLayout.setVerticalSpacing(5)
+            # projectsTableLayout.setHorizontalSpacing(30)
             MainLayout=QHBoxLayout()
-            MainLayout.addLayout(projectsLayout,1)
+            MainLayout.addLayout(projectsTableLayout,1)
             MainLayout.addLayout(projectsInfoLayout,1)
             # MainLayout.addStretch()
 
@@ -924,11 +2302,11 @@ class ProjectsWidget(QWidget):
             self.OptionsLayout.addStretch(2)
             self.OptionsLayout.addWidget(self.FinanceButton)
             self.OptionsLayout.addStretch(38)
-            self.OptionsLayout.addWidget(self.RefreshButton)  
+            self.OptionsLayout.addWidget(adminbuttons['refresh'])  
             self.OptionsLayout.addStretch(2)
-            self.OptionsLayout.addWidget(self.ManagementButton)            
+            self.OptionsLayout.addWidget(adminbuttons['managemenent'])            
             self.OptionsLayout.addStretch(1)
-            self.OptionsLayout.addWidget(self.UserProfileButton)         
+            self.OptionsLayout.addWidget(adminbuttons['userprofile'])         
             self.OptionsLayout.addStretch(1)
             FullLayout=QVBoxLayout()
             FullLayout.addLayout(self.OptionsLayout)
@@ -1415,14 +2793,33 @@ class ProjectsWidget(QWidget):
                 self.slctdProjectStage.setText(RIBAstages[project])
                 
                 # self.slctdProjectName.setFixedWidth(self.slctdProjectName.fontMetrics().boundingRect(text).width()+40)
-                self.projectsDeadlineWidget.updateTable(project)
-                activeweek= QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1)
+                # self.projectsDeadlineWidget.populateTable(project)
+                # activeweek= QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1)
+            self.updateChart()
             # self.setProjectsCount()
 
 
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def updateChart(self):
+        try:
+            selectedRows=[i.row() for i in projectsTable.selectionModel().selectedRows() if projectsTable.isRowHidden(i.row())==False]
+            if len(selectedRows)==1:
+                project= projectsTable.item(selectedRows[0],projectsTable.columnLabels.index("Project")).text()
+                self.rscManager.resourcePeriodFilter=("Look ahead",None)
+                self.rscManager.project=project
+                self.rscManager.project_resources_df=self.rscManager.getRscForProject(project)
+                self.rscManager.updateAllDisplay()
+            else:
+                # print("here")
+                self.rscManager.resourcePeriodFilter=("Weekly",QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1).toString("dd/MM/yyyy"))
+                self.rscManager.project=None
+                self.rscManager.updateAllDisplay()
 
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
     def on_projectDblclick(self, index):
         try:
             global activeProjectrow, projectwindow
@@ -1444,895 +2841,56 @@ class ProjectsWidget(QWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical) 
 
-class ProjectTeamTable(QGroupBox):
-    def __init__(self):
-        try:
+class ResourceTabWidget(QWidget):
+    def __init__(self, adminbuttons):
+        try:    
             super().__init__()
-            self.newMemberButton=QPushButton("Update")
-            self.newMemberButton.setMaximumWidth(100)
-            self.newMemberButton.clicked.connect(self.newMemberClicked)
-
-
-            self.table=QTableWidget(1,1)
-            self.table.columnLabels=["Team","   "]
-            self.table.setColumnCount(len(self.table.columnLabels))
-            # self.table.setHorizontalHeaderLabels(self.table.columnLabels)
-            self.table.horizontalHeader().setStyleSheet("""
-        QHeaderView::section {
-            border: 0px;
-            border-bottom: 1px solid #d6d9dc;
-            background-color: #f0f0f0;
-            padding-left: 4px;
-            border-top-right-radius: 7px;
-            border-top-left-radius: 7px;
-        }
-        """)
-            testdata=[{"Individual":"Olumide","Role":"Useless Mechanical Engineer"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"},{"Individual":"Olu","Role":"Manager"},{"Individual":"Vince","Role":"Mech Engr"}]
-            # self.table.setStyleSheet("""QHeaderView{font-size:13px;}QTableWidget{ border:1px; font-family:"Gadugi"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8);border-bottom: 1px solid #eeeeee;}""")
-            self.table.setRowCount(len(testdata))
-            r=0
-            for usr in testdata:
-                self.table.setItem(r,self.table.columnLabels.index("Team"), QTableWidgetItem(usr["Individual"]))
-                self.table.setItem(r,self.table.columnLabels.index("   "), QTableWidgetItem(usr["Role"]))
-                r+=1
-            self.table.horizontalHeader().setVisible(False)
-            self.table.verticalHeader().setVisible(False)
-            # self.table.setMaximumHeight(200)
-            # self.table.setMaximumWidth(280)
-            self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self.table.resizeColumnToContents(0)
-            self.table.setColumnWidth(0,100)
-            self.table.setColumnWidth(1, 300)
-            self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-            self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-            self.table.itemDoubleClicked.connect(self.editTeamMember)
-            self.table.installEventFilter(self)
-            scrollbar_style = """
-            QScrollBar {
-                border: none;
-                background: #f0f0f0;
-                width: 8px;
-                margin: 10px 0px 10px 0px;
-            }
-
-            # QScrollBar::handle {
-            #     background: #c0c0c0;
-            #     min-height: 20px;
-            # }
-
-            # QScrollBar::add-line, QScrollBar::sub-line {
-            #     background: none;
-            # }
-
-            # QScrollBar::up-arrow, QScrollBar::down-arrow {
-            #     background: none;
-            # }
-
-            # QScrollBar::add-page, QScrollBar::sub-page {
-            #     background: none;
-            # }
-            """
-
-            # self.table.verticalScrollBar().setStyleSheet(scrollbar_style)
-            # self.table.horizontalScrollBar().setStyleSheet(scrollbar_style)
-
-            self.setTitle("Current Team")
-            self.setStyleSheet("QGroupBox { font-weight: bold; } ")  # Optional: Style the group box title
-
-            layout=QVBoxLayout()
-            layout.addWidget(self.newMemberButton, alignment=Qt.AlignRight)
-            layout.addWidget(self.table)
-            self.setLayout(layout)
-            self.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #aaaaaa;
-                border-radius: 5px;
-                margin-top: 20px; /* leave space at the top for the title */
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                padding: 0 3px;
-                font-weight: bold;
-            }
-            """)
-            titlefont=QFont()
-            titlefont.setBold(True)
-            titlefont.setPointSize(9)
-            self.setFont(titlefont)
-            self.setMaximumHeight(200)
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    
-    def eventFilter(self, source, event):
-        try:
-            if event.type() == QEvent.ContextMenu and source == self.table:
-                menu = QMenu()
-                selectedRows=[index.row() for index in self.table.selectionModel().selectedRows()]
-                if len(selectedRows)>0:
-                    if len(selectedRows)==1:
-                        menu.addAction("Edit").triggered.connect(lambda: self.editTeamMember(selectedRows[0]))
-                    menu.addAction("Delete",self.deleteTeamMember)
-                    menu.exec_(event.globalPos())
-                    return True
-
-            return super().eventFilter(source, event)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    def newMemberClicked(self):
-        try:
-            pass
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    def editTeamMember(self):
-        try:
-            pass
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    def deleteTeamMember(self):
-        try:
-            pass
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class Resources():
-    def __init__(self):
-        try:
-            self.resourcesByUser={}
-            self.resourcesByProject={}
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def getAll(self):
-        try:
-            self.resourcesByUser.clear()
-            self.resourcesByProject.clear()
-
-            if path.exists(users_jsons):
-                for folder in [usr for usr in listdir(users_jsons) if path.isdir(users_jsons+"\\"+usr+"\\Resources")]:
-                    # #delete the folder
-                    # rmtree(users_jsons+"\\"+folder+"\\Resources")
-                    resourceFiles=[users_jsons+"\\"+folder+"\\Resources\\"+file for file in listdir(users_jsons+"\\"+folder+"\\Resources") if file.startswith("Rsc-") and file.endswith(".json")]
-                    if path.exists(users_jsons+"\\"+folder+"\\Resources\\Completed"):
-                        completedFiles=[users_jsons+"\\"+folder+"\\Resources\\Completed\\"+file for file in listdir(users_jsons+"\\"+folder+"\\Resources\\Completed") if file.startswith("Rsc-") and file.endswith(".json")]
-                        resourceFiles=resourceFiles+completedFiles
-                    self.resourcesByUser[folder]=[]
-                    for filepath in (resourceFiles):
-                        with open(filepath,'r') as json_file:
-                            data = json_load(json_file)
-                            data["filename"]=path.basename(filepath)
-                            self.resourcesByUser[folder].append(data)
-                            if f"{data['ProjectNo']} - {data['ProjectName']}" not in self.resourcesByProject: self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"]=[]
-                            self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"].append(data)
-
-                    # for file in listdir(users_jsons+"\\"+folder+"\\Resources"):
-                    #     if file.startswith("Rsc-")  and file.endswith(".json"):
-                    #         with open(users_jsons+"\\"+folder+"\\Resources\\"+file,'r') as json_file:
-                    #             data = json_load(json_file)
-                    #             data["filename"]=file  
-                    #             self.resourcesByUser[folder].append(data)
-                    #             if f"{data['ProjectNo']} - {data['ProjectName']}" not in self.resourcesByProject: self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"]=[]
-                    #             self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"].append(data)
-                    # for file in listdir(users_jsons+"\\"+folder+"\\Resources\\Completed"):
-                    #     if file.startswith("Rsc-")  and file.endswith(".json"):
-                    #         with open(users_jsons+"\\"+folder+"\\Resources\\Completed\\"+file,'r') as json_file:
-                    #             data = json_load(json_file)
-                    #             data["filename"]=file  
-                    #             self.resourcesByUser[folder].append(data)
-                    #             if f"{data['ProjectNo']} - {data['ProjectName']}" not in self.resourcesByProject: self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"]=[]
-                    #             self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"].append(data)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    @staticmethod
-    def recoverResources(resourcesObjs, oncomplete=None):
-        try:
-            if this_userdata==None: return
-            for rsc in resourcesObjs:
-                rsc["Status"]="Open"
-                rsc["EditBy"]=this_userdata["initial"]
-                count=1
-                while path.exists(f"{users_jsons}\\{rsc['RscFor']}\\Resources\\Rsc-{this_userdata['Initial']}-{rsc['ProjectNo']}-{count}.json"):
-                    count+=1
-                rscfilename= f"{users_jsons}\\{rsc['RscFor']}\\Resources\\Rsc-{this_userdata['Initial']}-{rsc['ProjectNo']}-{count}.json"
-                oldfilename=rsc["filename"]
-                rsc.pop("filename",None)
-                with open(rscfilename,'w') as f: #create json file
-                    json_dump(rsc, f, indent=2)
-                if path.exists(users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\Completed"+oldfilename): #delete the file
-                    remove(users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\Completed"+oldfilename)
-            if oncomplete: oncomplete()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    @staticmethod
-    def completeResources(resourcesObjs, oncomplete=None):
-        try:
-            if this_userdata==None: return
-            for rsc in resourcesObjs:
-                completedFolder=users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\Completed"
-                if path.exists(completedFolder)==False: mkdir(completedFolder)
-                rsc["Status"]="Completed"
-                
-                oldfilename=rsc["filename"]
-                completedfilename=oldfilename
-                if path.exists(completedFolder+"\\"+completedfilename):
-                    completedfilename=completedfilename.replace(".json","")
-                    count=1
-                    while path.exists(completedFolder+"\\"+completedfilename+" - "+str(count)+".json"):
-                       count+=1 
-                    completedfilename=completedfilename+" - "+str(count)+".json"
-                rsc.pop("filename",None)
-                with open(completedFolder+"\\"+completedfilename,'w') as f: #create json file
-                    json_dump(rsc, f, indent=2)
-
-                if path.exists(users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\"+oldfilename): #delete the file
-                    remove(users_jsons+"\\"+rsc["RscFor"]+"\\Resources\\"+oldfilename)
-            if oncomplete: oncomplete()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    @staticmethod
-    def deleteResources(resourcesPaths, oncomplete=None):
-        try:
-            if this_userdata==None: return
-            for resourcePath in resourcesPaths:
-                if path.exists(resourcePath):
-                    remove(resourcePath)
-            if oncomplete: oncomplete()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class ResourceDialog(QDialog):
-    def __init__(self):
-        try:
-            super().__init__()
-            self.personBox=QComboBox()
-            self.personBox.addItems([emp for emp in RCDC_employees if path.exists(users_jsons+"\\"+emp)])
-
-            self.projectBox=QComboBox()
-            for proj in project3name_dict: #Add lists of projects from the project3name_dict dicitonary
-                self.projectBox.addItem(proj,[project3name_dict[proj],proj.split(' - ',1)[0]])
-            self.projectBox.currentIndexChanged.connect(lambda: self.stageBox.setCurrentText(RIBAstages.get(self.projectBox.currentText(),"XX")))
-            self.weekBox=CheckableComboBox('Resource Weeks')
-            self.weekBox.setMaximumWidth(500)
-
-            self.hoursBox=QDoubleSpinBox()
-            self.hoursBox.setRange(0,1000)
-            self.hoursBox.setDecimals(1)
-            self.hoursBox.setSuffix("hr")
-
-            self.stageBox=QComboBox()
-            self.stageBox.addItems(["XX","01","02","03","04","05","06","07"])
-            self.stageBox.setEditable(True)
-
-            self.taskDescBox= QTextEdit()
-            self.buttonBox =QDialogButtonBox()
+            self.rscManager=ResourceManager(include_toolbuttons=True, include_period=True,include_table=True, include_chart=True, refreshResources=self.refreshResourceWindow, include_usersFilter=True, include_statistics=True)
             
-            form=QFormLayout()
-            form.addRow("Person:",self.personBox)
-            form.addRow("Project:",self.projectBox)
-            form.addRow("Week:",self.weekBox)
-            form.addRow("Hours:",self.hoursBox)
-            form.addRow("Stage:",self.stageBox)
-            form.addRow("Task Description:",self.taskDescBox)
-            form.addRow(self.buttonBox)
-            form.setSpacing(20)
-            
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-            self.setWindowTitle("New Resource")
-            self.setLayout(form)
-            self.resize(600, 550)
-            # self.setMaximumSize(600, 550)
+            # busynessLayout=QGridLayout()
+            # # busynessLayout.addWidget(self.rscManager.busynessLabel, 0, 0)
+            # busynessLayout.addWidget(self.rscManager.busynessValue, 1, 0)
+            # busynessLayout.setHorizontalSpacing(50)
 
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            self.OptionsLayout=QHBoxLayout()
+            self.OptionsLayout.addStretch(3)
+            self.OptionsLayout.addWidget(self.rscManager.NewResourceButton)
+            self.OptionsLayout.addStretch(38)
+            self.OptionsLayout.addWidget(adminbuttons['refresh'])  
+            self.OptionsLayout.addStretch(2)
+            self.OptionsLayout.addWidget(adminbuttons['managemenent'])            
+            self.OptionsLayout.addStretch(1)
+            self.OptionsLayout.addWidget(adminbuttons['userprofile'])         
+            self.OptionsLayout.addStretch(1)
 
-    def newResource(self,oncomplete=None, project=None, person=None):
-        try:
-            def addResource(close=True,oncomplete=None):
-                try:
-                    if this_userdata!=None:
-                        if path.exists(f"{users_jsons}\\{self.personBox.currentText()}"):
-                            resourceFolder=f"{users_jsons}\\{self.personBox.currentText()}\\Resources"
-                            if path.exists(resourceFolder)==False:
-                                mkdir(resourceFolder)
-                            #create resource file
-                            count=1
-                            while path.exists(f"{resourceFolder}\\Rsc-{this_userdata['initial']}-{ThisProject_no}-{count}.json"):
-                                count+=1
-                            rscfilename= f"{resourceFolder}\\Rsc-{this_userdata['initial']}-{ThisProject_no}-{count}.json"
-                            with open(rscfilename,'w') as f: #create json file
-                                obj= {
-                                    "RscFor": self.personBox.currentText(),
-                                    "RscBy": this_userdata["initial"],
-                                    "EditBy": this_userdata["initial"],
-                                    "ProjectNo": f"{ThisProject_no}",
-                                    "ProjectName": f"{ThisProject_name}",
-                                    "TaskDesc": self.taskDescBox.toPlainText(),
-                                    "Hours": self.hoursBox.value(),
-                                    "Weeks": [self.weekBox.itemData(i).toString("dd/MM/yyyy") for i in self.weekBox.checkedIndices],
-                                    "Stage": self.stageBox.currentText(),
-                                    "Status": "Open",
-                                    "OpenDate": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                                }
-                                json_dump(obj, f, indent=2)
-                            if close: self.close()
-                            if oncomplete: oncomplete()
-                    else:
-                        MsgBox("You are not logged in", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-                except:
-                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            
-
-            if project: 
-                self.projectBox.setCurrentText(project)
-                # self.projectBox.setEnabled(False)
+            resourceBoardLayout=QGridLayout()
+            resourceBoardLayout.addWidget(self.rscManager.usersFilterBox, 0, 0)
+            resourceBoardLayout.addLayout(self.rscManager.periodLayout, 0, 1)
+            resourceBoardLayout.addWidget(self.rscManager.resourceTable.resource_Search, 2, 0)
+            resourceBoardLayout.addWidget(self.rscManager.busynessValue, 2, 1, Qt.AlignCenter)
+            resourceBoardLayout.addWidget(self.rscManager.resourceTable, 3, 0)
+            resourceBoardLayout.addWidget(self.rscManager.resourceChart, 3, 1)
+            resourceBoardLayout.setColumnStretch(0, 1)
+            resourceBoardLayout.setColumnStretch(1, 1)
 
 
-            if person: 
-                self.personBox.setCurrentText(person)
-                self.personBox.setEnabled(False)
-
-            weeks=[QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1 + 7 * i) for i in range(50)]
-            for week in weeks:
-                self.weekBox.addCheckableItem(f"{week.toString('MMM dd')}-{week.addDays(4).toString('MMM dd')}",week) 
-            self.weekBox.handleItemPressed(2)#check the current week
-
-            addButton= QPushButton("Add")
-            addButton.clicked.connect(lambda:addResource(close=False,oncomplete=oncomplete))
-            self.buttonBox.addButton(addButton, QDialogButtonBox.ActionRole)
-            addAndCloseButton=QPushButton("Add and Close")
-            addAndCloseButton.clicked.connect(lambda:addResource(close=True,oncomplete=oncomplete))
-            self.buttonBox.addButton(addAndCloseButton,QDialogButtonBox.ActionRole)
-            self.exec()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)        
-
-    def editResource(self, resourceObj, oncomplete=None):
-        try:
-            def updateResource(oncomplete=None):
-                try:
-                    #if you're editting a resource the EditBy changes to you and the file name( you are xx in Rsc-xx-[count].json)
-                    if this_userdata!=None:
-                        #establish the file name and resourceFolder
-                        editBy=this_userdata["initial"]
-                        resourceFolder=users_jsons+"\\"+self.personBox.currentText()+"\\Resources"
-                        if path.exists(resourceFolder)==False: mkdir(resourceFolder) # create the folder if it doesn't exist
-                        count=1
-                        while path.exists(f"{resourceFolder}\\Rsc-{editBy}-{resourceObj['ProjectNo']}-{count}.json"): #whoever is editting the file is the EditBy and the xx in Rsc-xx-[count].json
-                            count+=1
-                        rscfilename= f"{resourceFolder}\\Rsc-{editBy}-{resourceObj['ProjectNo']}-{count}.json"
-                        with open(rscfilename,'w') as f: #create json file
-                            obj= {
-                                "RscFor": self.personBox.currentText(),
-                                "RscBy": resourceObj["RscBy"],
-                                "EditBy": editBy,
-                                "ProjectNo": resourceObj["ProjectNo"],
-                                "ProjectName": resourceObj["ProjectName"],
-                                "Hours": self.hoursBox.value(),
-                                "Stage": self.stageBox.currentText(),
-                                "TaskDesc": self.taskDescBox.toPlainText(),
-                                "Weeks": [self.weekBox.itemData(i).toString("dd/MM/yyyy") for i in self.weekBox.checkedIndices],
-                                "Status": resourceObj["Status"],
-                                "OpenDate": resourceObj["OpenDate"]
-                            }
-                            json_dump(obj, f, indent=2)
-                        oldrscfile= users_jsons+"\\"+resourceObj["RscFor"]+"\\Resources\\"+resourceObj["filename"]
-                        if path.exists(oldrscfile):
-                            remove(oldrscfile)
-                        self.close()
-                        if oncomplete: oncomplete()
-                    else:
-                        MsgBox("You are not logged in", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-                except:
-                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            #add existing data
-            self.personBox.setCurrentText(resourceObj["RscFor"])
-            #weeks
-            if resourceObj["Weeks"]!=None: #existing selected weeks
-                existingweeks=[QDate.fromString(week,"dd/MM/yyyy") for week in resourceObj["Weeks"]]
-                if existingweeks:
-                    curweek=min(existingweeks) #get the earliest week
-                    while curweek < QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1): #if the earliest week is before the current week
-                        self.weekBox.addCheckableItem(f"{curweek.toString('MMM dd')}-{curweek.addDays(4).toString('MMM dd')}",curweek) #add from the earliest week to the current week
-                        curweek=curweek.addDays(7)
-            weeks=[QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1 + 7 * i) for i in range(50)]
-            for week in weeks:
-                self.weekBox.addCheckableItem(f"{week.toString('MMM dd')}-{week.addDays(4).toString('MMM dd')}",week) 
-            for week in existingweeks:
-                self.weekBox.handleItemPressed(self.weekBox.findData(week))#check the current week    
-                
-            self.projectBox.setCurrentText(f"{resourceObj['ProjectNo']} - {resourceObj['ProjectName']}")
-            self.projectBox.setEnabled(False)
-            self.hoursBox.setValue(float(resourceObj["Hours"]))
-            self.stageBox.setCurrentText(resourceObj["Stage"])
-            self.taskDescBox.setText(resourceObj["TaskDesc"])
-            # self.weekBox.handleItemPressed(2)
-            saveButton= QPushButton("Save changes")
-            saveButton.clicked.connect(lambda:updateResource(oncomplete=oncomplete))
-            self.buttonBox.addButton(saveButton, QDialogButtonBox.ActionRole)
-            self.exec()
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class ResourceTable(QTableWidget):
-    def __init__(self, oncomplete=None):
-        try:
-            super().__init__()
-            self.oncomplete=oncomplete
-            self.columnLabels=["Individual","Project Role","Project No.","Project Name", "Hours", "Task Description","Stage","Status","Open Date"]
-            # self.columnLabels=["Individual","Project No.","Project Name","Project Role", "Hours", "Task Description", "Next deadline"]
-            # self.setStyleSheet("""QHeaderView{font-size:13px;}QTableWidget{ border:1px; font-family:"Gadugi"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8);border-bottom: 1px solid #eeeeee;}""")
-            self.setStyleSheet("""QHeaderView{font-size:13px;}QTableWidget{ border:1px; font-family:"Gadugi"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8);border-bottom: 1px solid #eeeeee;}""")
-            self.setColumnCount(len(self.columnLabels))
-            self.setEditTriggers(QAbstractItemView.NoEditTriggers)
-            self.setHorizontalHeaderLabels(self.columnLabels)
-            self.setShowGrid(False) #disable grid lines
-            self.setSelectionBehavior(1)
-            self.verticalHeader().setVisible(False)
-            self.setSortingEnabled(True)
-            for i in range(len(self.columnLabels)):
-                self.horizontalHeader().setSectionResizeMode(i, QHeaderView.Interactive)
-            self.itemDoubleClicked.connect(self.dblclickedResource)
-
-            self.setColumnHidden(self.columnLabels.index("Open Date"),True)
-            self.installEventFilter(self)
-
-            # User filter box
-            self.userFilterBox=QComboBox()
-            self.userFilterBox.addItem("All users")
-            self.userFilterBox.addItems(RCDC_employees)
-            self.userFilterBox.setStyleSheet("QComboBox{padding-left:20px;}")
-            self.userFilterBox.setMinimumHeight(40)
-            self.userFilterBox.setFixedSize(200,40)
-            self.userFilterBox.currentTextChanged.connect(self.onUserFilterChange)#Connecting the change in the drop-down to its function
-
-            #Search box
-            self.resource_Search = QLineEdit()
-            self.resource_Search.setPlaceholderText("Search")
-            self.resource_Search.setStyleSheet("padding-left:20px;")
-            self.resource_Search.setMaximumSize(600,30)
-            self.resource_Search.textChanged.connect(self.onSearch)
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def updateTable(self, projectResources):
-        try:           
-            #Populate the table 
-            self.setRowCount(len(projectResources))
-            r=0
-            for rsc in projectResources:
-                self.setItem(r,self.columnLabels.index("Individual"), QTableWidgetItem(rsc['RscFor']))
-                self.item(r,self.columnLabels.index("Individual")).setData(256,rsc['filename'])
-                self.item(r,self.columnLabels.index("Individual")).setData(257,rsc['RscBy'])
-                self.item(r,self.columnLabels.index("Individual")).setData(258,rsc['EditBy'])
-                self.setItem(r,self.columnLabels.index("Project No."), QTableWidgetItem(rsc['ProjectNo']))
-                self.setItem(r,self.columnLabels.index("Project Name"), QTableWidgetItem(rsc['ProjectName']))
-                self.setItem(r,self.columnLabels.index("Hours"),QTableWidgetItem(f"{rsc['Hours']}"))
-                self.item(r,self.columnLabels.index("Hours")).setData(256,rsc['Weeks'])
-                self.item(r,self.columnLabels.index("Hours")).setTextAlignment(Qt.AlignCenter)
-                self.setItem(r,self.columnLabels.index("Task Description"), QTableWidgetItem(rsc['TaskDesc']))
-                self.setItem(r,self.columnLabels.index("Stage"), QTableWidgetItem(rsc['Stage']))
-                self.setItem(r,self.columnLabels.index("Status"), QTableWidgetItem(rsc['Status']))
-                self.setItem(r,self.columnLabels.index("Open Date"), QTableWidgetItem(rsc['OpenDate']))
-
-                #Style the row
-                if rsc['Status']=="Open":
-                    for c in range(self.columnCount()):
-                        if self.item(r,c): self.item(r,c).setBackground(QColor(255, 236, 188,240))
-                elif rsc['Status']=="Completed":
-                    for c in range(self.columnCount()):
-                        if self.item(r,c): self.item(r,c).setBackground(QColor(192, 228, 212,200)) 
-                r+=1
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def resourceObj(self, row):
-        try:
-            resourceObj={'RscFor':self.item(row,self.columnLabels.index("Individual")).text(),
-                        'RscBy':self.item(row,self.columnLabels.index("Individual")).data(257),
-                        'EditBy':self.item(row,self.columnLabels.index("Individual")).data(258),
-                        'ProjectNo':self.item(row,self.columnLabels.index("Project No.")).text(),
-                        'ProjectName':self.item(row,self.columnLabels.index("Project Name")).text(),
-                        'TaskDesc':self.item(row,self.columnLabels.index("Task Description")).text(),
-                        'Hours':self.item(row,self.columnLabels.index("Hours")).text(),
-                        'Weeks':self.item(row,self.columnLabels.index("Hours")).data(256), #this is a list of weeks
-                        'Stage':self.item(row,self.columnLabels.index("Stage")).text(),
-                        'Status':self.item(row,self.columnLabels.index("Status")).text(),
-                        'OpenDate':self.item(row,self.columnLabels.index("Open Date")).text(),
-                        'filename':self.item(row,self.columnLabels.index("Individual")).data(256)
-                        }
-            return resourceObj
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def dblclickedResource(self, item):
-        try:
-            row=item.row()
-            if self.item(row,self.columnLabels.index("Status")).text()=="Open":
-                rscObj=self.resourceObj(row)
-                resourcedialog=ResourceDialog()
-                resourcedialog.editResource(rscObj, oncomplete=self.oncomplete)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def eventFilter(self, source, event): 
-        try:
-            if event.type() == QEvent.ContextMenu and source==self:
-                menu = QMenu() 
-                selectedrows=[i.row() for i in self.selectionModel().selectedRows() if self.isRowHidden(i.row())==False]
-                if len(selectedrows)>0:
-                    if this_userdata!=None: #and all([self.item(i,self.columnLabels.index("For")).text()==this_userdata["initial"] for i in selectedrows]): #if all selected actions are for this user
-                        #if all selected rows resources are open
-                        if all([self.item(i,self.columnLabels.index("Status")).text()=="Open" for i in selectedrows]):
-                            if len(selectedrows)==1: #edit resource - if only one resource is selected 
-                                menu.addAction("Edit", lambda: self.dblclickedResource(self.item(selectedrows[0],0)))
-                            # #assign to week
-                            # menu.addAction("Assign to Week", self.weekAssignAction)
-                            #complete resource
-                            menu.addAction("Complete", lambda: self.middleWare("Complete"))
-                        #recover resource - if all selected rows actions are completed
-                        elif all([self.item(i,self.columnLabels.index("Status")).text()=="Completed" for i in selectedrows]):
-                            menu.addAction("Recover", lambda: self.middleWare("Recover"))
-                        #delete action
-                        menu.addAction("Delete", lambda: self.middleWare("Delete"))  #Deleted resources are not recoverable and are not recorded in the log
-                        menu.exec_(event.globalPos())
-                        return True
-            return super().eventFilter(source, event)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def middleWare(self, action):
-        try:
-            selectedrows=[i.row() for i in self.selectionModel().selectedRows() if self.isRowHidden(i.row())==False]
-            count=len(selectedrows)
-            if count>0:
-                qm=QMessageBox()
-                if action=="Delete":
-                    ret = qm.warning(self,'Delete selected resource(s)', "Are you sure you want to delete these " + str(count) + " resource(s)?\n\nNote: Deleted resources are not recoverable or tracked anywhere", qm.Yes | qm.No)
-                    if ret==qm.Yes:
-                        Resources.deleteResources([users_jsons+"\\"+self.item(i,self.columnLabels.index("Individual")).text()+"\\Resources\\"+self.item(i,self.columnLabels.index("Individual")).data(256) for i in selectedrows], oncomplete=self.oncomplete)
-                else:
-                    resourcesObjs=[self.resourceObj(i) for i in selectedrows]
-                    if action=="Complete":
-                        ret = qm.warning(self,'Complete resource(s)', "Mark these " + str(count) + " resource(s) as completed?", qm.Yes | qm.No)
-                        if ret==qm.Yes:
-                            Resources.completeResources(resourcesObjs, oncomplete=self.oncomplete)
-                    elif action=="Recover":
-                        ret = qm.warning(self,'Recover resource(s)', "Recover these " + str(count) + " resource(s)?", qm.Yes | qm.No)
-                        if ret==qm.Yes:
-                            Resources.recoverResources(resourcesObjs, oncomplete=self.oncomplete)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def onUserFilterChange(self, text):
-        try:
-            #Clear the action search box             
-            self.resource_Search.blockSignals(True)
-            self.resource_Search.setText("")
-            self.resource_Search.blockSignals(False)
-            # self.setColumnHidden(self.columnLabels.index("Project"),False)
-            if text=="All users":
-                self.setColumnHidden(self.columnLabels.index("Individual"),False) #show the actionfor column
-                # self.actionsWidget.setActionLabel("All users")
-            else:
-                self.setColumnHidden(self.columnLabels.index("Individual"),True)
-                # self.actionsWidget.setActionLabel(text)
-            #Show actions that match the specified item in the filter dropdown
-        
-            for action in range(self.rowCount()):
-                self.setRowHidden(action, False)
-                if text != "All users":
-                    if self.item(action,self.columnLabels.index("Individual")).text() != text:
-                        self.setRowHidden(action, True)
-            # self.updateActionsChart(text)
-            
-            # self.actionsWidget.actionsProjectBox.blockSignals(True)
-            # self.actionsWidget.actionsProjectBox.setCurrentText("All projects")
-            # self.actionsWidget.actionsProjectBox.blockSignals(False)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def onSearch(self):
-        try:
-            # if there's any input in the search box, set dropdown box value to 'All users'
-            self.userFilterBox.blockSignals(True)
-            self.userFilterBox.setCurrentIndex(0)
-            
-            self.userFilterBox.blockSignals(False)
-            count=0
-            if self.resource_Search.text()=='':
-                #if search box is empty, show all items in table
-                for i in range(self.rowCount()): 
-                    self.setRowHidden(i,False)
-                    count+=1
-            else:
-                #if search box has any text, show rows containing that text
-                for i in range(self.rowCount()): self.setRowHidden(i,True)
-                for i in range(self.rowCount()):
-                    for j in range(self.columnCount()):
-                        if self.item(i,j) !=None and self.resource_Search.text().lower() in self.item(i,j).text().lower():
-                            self.setRowHidden(i, False) 
-                            count+=1
-                            break
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class ResourceChart(QWidget):
-    def __init__(self):
-        try:
-            super().__init__()
-            # self.resources=resources
-            # plt.style.use('seaborn')
-            # self.setMinimumWidth(1000)
-            self.layout = QVBoxLayout(self)
-            self.canvas = FigureCanvas()
-            self.layout.addWidget(self.canvas)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def filterData(self, df, period, filter):
-        try:
-            if df.empty: return []
-            if period=="All":
-                return df
-            elif period=="Weekly":
-                df=df[df["Weeks"].apply(lambda x: filter in x)]
-            elif period=="Monthly":
-                pass
-            return df
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def updateChart(self, resources_df, period="All",filter=None):
-        try:
-            # plt.close()
-            self.canvas.figure.clear()
-
-            df=self.filterData(resources_df, period, filter)
-            # print(df)
-            # self.fig, self.ax=plt.subplots()
-            # # self.ax.barh(data["RscFor"], data["Hours"])
-            
-            #if there are no resources, empty the chart
-            if len(df)==0:
-                self.canvas.figure.clear()
-                self.canvas.draw()
-                return
-            grouped_df = df.groupby('RscFor').agg({'Hours': 'sum'})
-            persons=grouped_df.index
-            hours=grouped_df['Hours']
-
-            df.index.name = 'Index'
-            ax= self.canvas.figure.subplots()
-            # pivot_df = df.pivot_table(index='RscFor', columns='Index', values='Hours', aggfunc='sum', fill_value=0)
-
-            # # Plot the horizontal stacked bar chart
-            # pivot_df.plot(kind='barh', stacked=True, ax=ax)
-            cmap = plt.get_cmap('tab20')
-            # cmap = plt.get_cmap('Set3')
-
-            ax.barh(persons, hours, color=cmap.colors)
-            ax.set_xlim(0, 30)
-
-            # Add labels and title
-            ax.set_xlabel('Hours')
-            ax.set_ylabel('User')
-            ax.set_title('Hours for each user')
-            # # ax.grid(True)
-            # # Custom legend
-            # # Create a list of labels from 'TaskDesc' corresponding to the order in pivot_df
-            # task_labels = [df.loc[df.index == idx, 'TaskDesc'].values[0] for idx in pivot_df.columns]
-
-            # # Create a custom legend
-            # ax.legend(task_labels, title='Task Description')
-            self.canvas.draw()
-
-            # # Show the plot
-            # plt.tight_layout()
-            # plt.show()
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class ProjectsDeadlineWidget(QWidget):
-    def __init__(self):
-        try:
-            super().__init__()
-            self.project=self.projectadminfolder=None
-            #New deadline button
-            self.NewDeadlineButton=QToolButton()
-            self.NewDeadlineButton.setText("New deadline")
-            self.NewDeadlineButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-            self.NewDeadlineButton.setIcon(QIcon(newaction_icon))
-            self.NewDeadlineButton.setIconSize(QSize(25, 25))
-            self.NewDeadlineButton.setStyleSheet("font-size:14px;")
-            self.NewDeadlineButton.clicked.connect(lambda: self.updateDeadline(None))#Connecting the button to its function when clicked
-            self.NewDeadlineButton.setMinimumHeight(30)
-            self.NewDeadlineButton.setCursor(QCursor(Qt.PointingHandCursor))
-            QShortcut(QKeySequence('Ctrl+D'),self).activated.connect(lambda: self.updateDeadline(None))
-            #Deadline table
-            self.deadlineTable=QTableWidget(0,3)
-            self.deadlineTable.verticalHeader().setVisible(False)
-            self.deadlineTable.setSelectionBehavior(QAbstractItemView.SelectRows)
-            self.deadlineTable.itemDoubleClicked.connect(self.deadlineTableDblClicked)
-            # self.deadlineTable.setSortingEnabled(True)
-
-            MainLayout=QVBoxLayout()
-            MainLayout.addWidget(self.NewDeadlineButton)
-            MainLayout.addWidget(self.deadlineTable)
+            MainLayout=QGridLayout()
+            MainLayout.addLayout(self.OptionsLayout, 0, 0)
+            MainLayout.addLayout(resourceBoardLayout, 1, 0)
             self.setLayout(MainLayout)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def eventFilter(self, source, event):
-        try:
-            if event.type() == QEvent.ContextMenu and source == self.deadlineTable:
-                menu = QMenu()
-                selectedRows=[index.row() for index in self.deadlineTable.selectionModel().selectedRows()]
-                if len(selectedRows)>0:
-                    if len(selectedRows)==1:
-                        menu.addAction("Edit").triggered.connect(lambda: self.updateDeadline(selectedRows[0]))
-                    menu.addAction("Delete",self.deleteDeadline)
-                    menu.exec_(event.globalPos())
-                    return True
-
-            return super().eventFilter(source, event)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            
-
-    def updateTable(self, project):
+    def refreshResourceWindow(self):
         try:
-            self.project=project
-            self.projectadminfolder= Project_Folders_dst+"\\"+self.project+"\\2 Project Admin\\0 Project Data"
-            self.deadlineTable.clear()
-            self.deadlineTable.setRowCount(0)
-            self.columnLabels=["Activity","Deadline"]#,"Status"]
-            if self.project!=None and path.exists(self.projectadminfolder):
-                if path.exists(self.projectadminfolder+"\\Activities")==False:
-                    mkdir(self.projectadminfolder+"\\Activities")
-                self.activeActivities=[]
-                for activityfile in listdir(self.projectadminfolder+"\\Activities"):
-                    with open(self.projectadminfolder+"\\Activities\\"+activityfile, 'r') as f:
-                        activity=json_load(f)
-                        activity["filename"]=activityfile
-                        self.activeActivities.append(activity)
-                self.activeActivities.sort(key=lambda x: datetime.strptime(x["Deadline"], "%d/%m/%Y"))
-                self.deadlineTable.setColumnCount(len(self.columnLabels))
-                self.deadlineTable.setHorizontalHeaderLabels(self.columnLabels)
-                self.deadlineTable.setRowCount(len(self.activeActivities))
-                for row in range(len(self.activeActivities)):
-                    item=QTableWidgetItem(self.activeActivities[row]["Activity"])
-                    item.setToolTip(self.activeActivities[row]["Activity"])
-                    item.setData(256, self.activeActivities[row]["filename"])
-                    self.deadlineTable.setItem(row,self.columnLabels.index("Activity"),item)
+            global Resources_df
+            fetchAllResources(includeHolidays=True)
+            self.rscManager.resetResources()
+            self.rscManager.populateTable()
+            self.rscManager.updateAllDisplay()
 
-                    # self.deadlineTable.setItem(row,self.columnLabels.index("Hours"),QTableWidgetItem(str(activity["Hours"])+"hrs"))
-                    activitydeadline=self.activeActivities[row]["Deadline"]
-                    if activitydeadline not in ["",None]:
-                        deadlineitem=QTableWidgetItem(activitydeadline)
-                        self.deadlineTable.setItem(row,self.columnLabels.index("Deadline"),deadlineitem)
-                        # self.deadlineTable.item(row,self.columnLabels.index("Deadline")).setData(Qt.DisplayRole, QDate(int(activitydeadline.split("/")[2]),int(activitydeadline.split("/")[1]),int(activitydeadline.split("/")[0])))
-                        # print(f"{self.activeActivities[row]['Activity']} {activitydeadline}")
-                    # self.deadlineTable.setItem(row,self.columnLabels.index("Status"),QTableWidgetItem(self.activeActivities[row]["Status"])
-                
-                self.NewDeadlineButton.setEnabled(True)
-                self.deadlineTable.installEventFilter(self)
-            else:
-                self.NewDeadlineButton.setEnabled(False)
-                self.deadlineTable.setRowCount(1)
-                self.deadlineTable.setColumnCount(1)
-                self.deadlineTable.setItem(0, 0,QTableWidgetItem("Path '2 Project Admin/0 Project Data' not found"))
-                self.deadlineTable.setColumnHidden(1,True)
-                self.deadlineTable.setColumnHidden(2,True)
-                self.deadlineTable.setColumnHidden(3,True)
-                self.deadlineTable.item(0,0).setBackground(QColor("#EE1111"))
-                self.deadlineTable.setHorizontalHeaderLabels([""])
-                self.deadlineTable.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeToContents)
-                self.deadlineTable.removeEventFilter(self)
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    
-    def deleteDeadline(self):
-        try:
-            selectedRows=[index.row() for index in self.deadlineTable.selectionModel().selectedRows()]
-            if len(selectedRows)>0:
-                for row in selectedRows:
-                    activityfile=self.projectadminfolder+"\\Activities\\"+self.deadlineTable.item(row,self.columnLabels.index("Activity")).data(256)
-                    if path.exists(activityfile):
-                        remove(activityfile)
-                self.updateTable(self.project)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def deadlineTableDblClicked(self):
-        try:
-            selectedRows=[index.row() for index in self.deadlineTable.selectionModel().selectedRows()]
-            if len(selectedRows)==1 and self.deadlineTable.item(selectedRows[0],self.columnLabels.index("Activity")).data(256)!=None:
-                row=selectedRows[0]
-                self.updateDeadline(row)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def updateDeadline(self, index=None):
-        try:      
-            self.deadlineEdit=QTextEdit()
-            self.deadlineEdit.setPlaceholderText("Enter deadline")
-            self.deadlineEdit.setStyleSheet("QTextEdit{border:1px solid #90a9c6; border-radius:4px;}")
-
-            # self.hoursBox=QSpinBox()
-            # self.hoursBox.setSuffix("hrs")
-            # self.hoursBox.setRange(0, 1000)
-            # self.hoursBox.setValue(1)
-            # self.minutesBox=QSpinBox()
-            # self.minutesBox.setSuffix("m")
-            # self.minutesBox.setRange(0, 59)
-            # timeLayout=QHBoxLayout()
-            # timeLayout.addWidget(self.hoursBox)
-            # timeLayout.addWidget(self.minutesBox)
-
-            # self.hoursBox.setStyleSheet("QDoubleSpinBox{border:1px solid #90a9c6; border-radius:4px;}")
-            self.dateEdit=QDateEdit()
-            self.dateEdit.setDate(QDate.currentDate())
-            self.dateEdit.setCalendarPopup(True)
-            # self.dateEdit.setStyleSheet("QDateEdit{border:1px solid #90a9c6; border-radius:4px;}")
-            self.newdialog=QDialog()
-
-
-            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            buttonBox.rejected.connect(self.newdialog.reject)
-            if index!=None: #if the user is editing an existing deadline
-                self.deadlineEdit.setText(self.deadlineTable.item(index,self.columnLabels.index("Activity")).text())
-                self.dateEdit.setDate(QDate.fromString(self.deadlineTable.item(index,self.columnLabels.index("Deadline")).text(), "dd/MM/yyyy"))
-                buttonBox.accepted.connect(lambda: self.funcOK(index))
-            else:
-                buttonBox.accepted.connect(self.funcOK)
-
-            form=QFormLayout()
-            form.addRow(self.deadlineEdit)
-            form.addRow("Deadline date",self.dateEdit)
-            form.addRow(buttonBox)
-            self.newdialog.setLayout(form)
-            
-            self.newdialog.setWindowFlags(self.newdialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-            self.newdialog.setWindowTitle("New deadline")
-            self.newdialog.exec()
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def funcOK(self, index=None):
-        try:
-            if self.deadlineEdit.toPlainText().strip()!="":
-                if index!=None:
-                    activityfile=self.projectadminfolder+"\\Activities\\"+self.deadlineTable.item(index,self.columnLabels.index("Activity")).data(256)
-                else:
-                    if path.exists(self.projectadminfolder+"\\Activities")==False:
-                        mkdir(self.projectadminfolder+"\\Activities")
-                    #create activity file
-                    count=1
-                    while path.exists(self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"):
-                        count+=1
-                    activityfile=self.projectadminfolder+"\\Activities\\Activity-"+str(count)+".json"
-                with open(activityfile, 'w') as f: #create activity file
-                    obj= {
-                        "Activity": self.deadlineEdit.toPlainText().strip(),
-                        "Deadline": self.dateEdit.text(),
-                        "Status": "Open"
-                    }
-                    json_dump(obj, f, indent=2)
-                self.updateTable(self.project)
-
-                self.newdialog.accept()
-            else:
-                MsgBox("Please enter deadline details", setWindowTitle="Can't proceed", setIcon = QMessageBox.Information)
+            #Home projects widget
+            initwindow.projectsWidget.rscManager.resetResources()
+            initwindow.projectsWidget.updateChart()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -2343,8 +2901,10 @@ class Init_Window(QMainWindow):
             super().__init__()
           #Fetch json data
             updateJsonData()
+            fetchAllResources(includeHolidays=True)
             global RCDC_employees #Employees initials
             RCDC_employees= [usr['initial'] for usr in json_data["employees"]]
+            RCDC_employees.sort()
             
             if this_userdata!=None: #if user isn't none,update management window
                 if 'managementwindow' in [name for name in globals().keys()]:
@@ -2354,30 +2914,47 @@ class Init_Window(QMainWindow):
                     managementwindow.tabs.setCurrentIndex(currenttab)
                     widget.addWidget(managementwindow) 
           
-          #Add projects and actions widgets to the page
-            self.projectsWidget=ProjectsWidget()
-            self.projectsWidget.RefreshButton.clicked.connect(self.RefreshClicked)
             QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
-            self.projectsWidget.ManagementButton.clicked.connect(self.ManagementClicked)#Connecting the button to its function when clicked
-            self.projectsWidget.edituser.triggered.connect(self.ChangeActiveUser)
-            if this_userdata!=None:
-                self.projectsWidget.editpassword.triggered.connect(self.EditPassword)
-          
+          #Project widget
+            self.projectsWidget=ProjectsWidget(adminbuttons=self.adminButtons())
             
           #Resource widget
-            resourceWidget=ResourceTabWidget()
+            self.resourceWidget=ResourceTabWidget(adminbuttons=self.adminButtons())
 
           #Setting the tab widgets
             self.Page =QTabWidget()
             self.Page.addTab(self.projectsWidget,"Projects")
-            self.Page.addTab(resourceWidget,"Resources")
+            self.Page.addTab(self.resourceWidget,"Resources")
             # self.Page.setCurrentIndex(1)
             self.Page.setStyleSheet("""QTabWidget::pane {border: 0px solid #000000; border-radius: 0px; background:rgb(215, 215, 215);}""")
             self.setCentralWidget(self.Page)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-   
+    def adminButtons(self):
+        try:
+            RefreshButton = ToolButton(" Refresh ", icon=refresh_icon, icon_width=40, icon_height=35, clicked=self.RefreshClicked)
+            ManagementButton = ToolButton(" Management ", icon=management_icon, icon_width=50, icon_height=35, min_width=100, clicked=self.ManagementClicked)
+            menu=QMenu()
+            if this_userdata==None:
+                UserProfileButton = ToolButton("  ", icon=user_icon, icon_width=45, icon_height=50, min_width=60, styleSheet="font-size:13px;border:0px; background:white; border-radius:4px;")
+                edituser=menu.addAction("Select user")
+            else:
+                UserProfileButton = ToolButton(this_userdata["user"], icon=user_icon, icon_width=45, icon_height=50, min_width=60, styleSheet="font-size:13px;border:0px; background:white; border-radius:4px;")
+                edituser=menu.addAction("Change user")
+                if "password" in this_userdata:
+                    editpassword=menu.addAction("Change password")
+                else:
+                    editpassword=menu.addAction("Set password")
+            UserProfileButton.setMenu(menu)
+            UserProfileButton.setPopupMode(QToolButton.InstantPopup)
+            edituser.triggered.connect(self.ChangeActiveUser)
+            if this_userdata!=None:
+                editpassword.triggered.connect(self.EditPassword)
+            return {"refresh":RefreshButton,"managemenent":ManagementButton,"userprofile":UserProfileButton}
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
     def RefreshClicked(self):
         try:
             #remove the current intitwindow and reinstantiate it
@@ -2410,7 +2987,7 @@ class Init_Window(QMainWindow):
         try:
             form=QFormLayout() 
             usersListBox=QComboBox()
-            usersListBox.addItems([usr['initial'] for usr in json_data["employees"]])
+            usersListBox.addItems(RCDC_employees)
             buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             form.addRow("User:", usersListBox)
             form.addRow(buttonBox)
@@ -2522,31 +3099,6 @@ class Init_Window(QMainWindow):
                 form.addRow("Confirm password:", confirmpswrd)
                 form.addRow(buttonBox)
             dialog.exec()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class ResourceTabWidget(QTableWidget):
-    def __init__(self):
-        try:    
-            super().__init__()
-            resources=Resources()
-            resources.getAll()
-            resources=sum(resources.resourcesByUser.values(),[])    
-            self.resources_df=pd_DataFrame(resources)
-            self.resourceTable=ResourceTable()
-            self.resourceTable.updateTable(resources)
-
-            self.resourceChart=ResourceChart()
-            
-            self.OptionsLayout=QHBoxLayout()
-            
-            MainLayout=QGridLayout()
-            MainLayout.addLayout(self.OptionsLayout, 0, 0)
-            MainLayout.addWidget(self.resourceTable, 1, 0)
-            MainLayout.addWidget(self.resourceChart, 1, 1)
-
-            self.setLayout(MainLayout)
-
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -4472,24 +5024,24 @@ class ProjectWindow(QMainWindow):
         
           #Buttons for project menu options
             btn1 = QPushButton("Model")
-            btn1.setStyleSheet("QPushButton{background-color:rgb(255,205,51);} QPushButton::hover{background-color:#ffc71a;} QPushButton::disabled{background-color:rgba(255,205,51,0.3);}")
+            # btn1.setStyleSheet("QPushButton{background-color:rgb(255,205,51);} QPushButton::hover{background-color:#ffc71a;} QPushButton::disabled{background-color:rgba(255,205,51,0.3);}")
             btn1.setEnabled(False)
             btn2 = QPushButton("Drawings and\n Sketches")
-            btn2.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
+            # btn2.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
             btn2.clicked.connect(self.btn2clicked)
 
             btn3 = QPushButton("Reports\n Presentations\n Memos")
-            btn3.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
+            # btn3.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
             btn3.clicked.connect(self.btn3clicked)
             
             btn4 = QPushButton("Specifications\n and\n Schedules")
-            btn4.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
+            # btn4.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
             # btn4.setEnabled(False)
             btn4.clicked.connect(self.btn4clicked)
             
 
             btn5 = QPushButton("Fees\n and\n Finances")
-            btn5.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
+            # btn5.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
             btn5.clicked.connect(self.btn5clicked)
             # menu=QMenu()
             # btn5.setMenu(menu)
@@ -4498,7 +5050,7 @@ class ProjectWindow(QMainWindow):
             # menu.addAction("P")
 
             btn6 = QPushButton("Calculations")
-            btn6.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
+            # btn6.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
             btn6.clicked.connect(self.btn6clicked)
             
             # btn6.setEnabled(False)
@@ -4511,23 +5063,45 @@ class ProjectWindow(QMainWindow):
             # menu.addAction("P")
 
             btn7 = QPushButton("Incoming")
-            btn7.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
+            # btn7.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
             btn7.setEnabled(False)
                     
             btn8 = QPushButton("Issues")
-            btn8.setStyleSheet("QPushButton{background-color:rgb(255,205,51);} QPushButton::hover{background-color:#ffc71a;} QPushButton::disabled{background-color:rgba(255,205,51,0.3);}")
+            # btn8.setStyleSheet("QPushButton{background-color:rgb(255,205,51);} QPushButton::hover{background-color:#ffc71a;} QPushButton::disabled{background-color:rgba(255,205,51,0.3);}")
             # btn8.setEnabled(False)
             btn8.clicked.connect(self.btn8clicked)
 
             
             btn9 = QPushButton("Minutes\n and\n Agendas")
-            btn9.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
+            # btn9.setStyleSheet("QPushButton{background-color:rgb(67,129,187);color:white;} QPushButton::hover{background-color:#2e73b3;} QPushButton::disabled{background-color:rgba(67,129,187,0.3);}")
             btn9.setEnabled(False)
 
             btn10 = QPushButton("Resource")
-            btn10.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
+            # btn10.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
             btn10.clicked.connect(self.btn10clicked)
             # btn10.setEnabled(False)
+            # Assuming you have defined the color scheme from the logo
+            logo_green = '#b0c454' # Replace with the exact green from the logo
+            logog_green_disabled = 'rgba(176, 196, 84, 0.3)'
+            logo_black = 'rgb(0, 0, 0)' # Or use a dark gray if pure black is too strong
+            logo_black_disabled = 'rgba(0, 0, 0, 0.3)'
+
+            logo_white = 'rgb(255, 255, 255)'
+            logo_white_disabled = 'rgba(255, 255, 255, 0.3)'
+            # logo_yellow = 'rgb(255, 235, 59)' # Replace with the exact yellow from the logo, if applicable
+
+            # Button styles
+            btn1.setStyleSheet(f"QPushButton{{background-color:{logo_green}; color: {logo_white};}} QPushButton::disabled{{background-color:{logog_green_disabled};}}")
+            btn2.setStyleSheet(f"QPushButton{{background-color:{logo_white}; color: {logo_black};}} QPushButton::disabled{{background-color:{logo_white_disabled};}}")
+            btn3.setStyleSheet(f"QPushButton{{background-color:{logo_green}; color: {logo_black};}} QPushButton::disabled{{background-color:{logog_green_disabled};}}")
+            btn4.setStyleSheet(f"QPushButton{{background-color:{logo_white}; color: {logo_black};}} QPushButton::disabled{{background-color:{logo_white_disabled};}}")
+            btn5.setStyleSheet(f"QPushButton{{background-color:{logo_white}; color: {logo_black};}} QPushButton::disabled{{background-color:{logo_white_disabled};}}")
+            btn6.setStyleSheet(f"QPushButton{{background-color:{logo_green}; color: {logo_black};}} QPushButton::disabled{{background-color:{logog_green_disabled};}}")
+            btn7.setStyleSheet(f"QPushButton{{background-color:{logo_white}; color: {logo_black};}} QPushButton::disabled{{background-color:{logo_white_disabled}; color: {logo_black_disabled};}}")
+            btn8.setStyleSheet(f"QPushButton{{background-color:{logo_green}; color: {logo_black};}} QPushButton::disabled{{background-color:{logog_green_disabled};}}")
+            btn9.setStyleSheet(f"QPushButton{{background-color:{logo_white}; color: {logo_black};}} QPushButton::disabled{{background-color:{logo_white_disabled}; color: {logo_black_disabled};}}")
+            btn10.setStyleSheet(f"QPushButton{{background-color:{logo_green}; color: {logo_white};}} QPushButton::disabled{{background-color:{logog_green_disabled};}}")
+
       
             #Add buttons to a layout
             grid = QGridLayout()
@@ -4634,21 +5208,29 @@ class ProjectWindow(QMainWindow):
                         SERVICES_Dict[str(self.sheet_name.cell(2, column).value)]=SerVar
                         SerVar={}
             wb.close()
-                
+
+          #RLayout
+            self.chartFilter=QComboBox()
+            self.chartFilter.addItems(["This week", "Look ahead"])
+            self.chartFilter.setCurrentText("Look ahead")
+            self.chartFilter.setFixedSize(400,28)
+            self.chartFilter.currentTextChanged.connect(self.updateChart)
+           #Resources
+            self.rscManager=ResourceManager(include_chart=True, project=ThisProject_foldername, include_period=True, updateDisplay=False)
+            self.updateChart()
+            rLayout= QVBoxLayout()
+            rLayout.addWidget(self.chartFilter)
+            rLayout.addWidget(self.rscManager.resourceChart)
+            
           #Page layout
             TophrLayout = QHBoxLayout()
             TophrLayout.addWidget(currentProjectLabel,1)
 
-
-            self.actionbuttonBox =QDialogButtonBox()
-            self.addMoreActions= QPushButton("Add actions")
-            self.actionbuttonBox.addButton(self.addMoreActions, QDialogButtonBox.ActionRole)
-
-            
             
             mainlayout= QHBoxLayout()
             mainlayout.addWidget(gridwidget,1)
-            mainlayout.addStretch(1)
+            # mainlayout.addStretch(1)
+            mainlayout.addLayout(rLayout,1)
 
             verLayout= QVBoxLayout()
             verLayout.addSpacing(30)
@@ -4661,7 +5243,6 @@ class ProjectWindow(QMainWindow):
 
           #home icon
             menuBar = self.menuBar()
-            
             homeMenu = QAction(icon=QIcon(home_icon), parent= self)
             backMenu= QAction(icon=QIcon(back_icon), parent= self)
             menuBar.addAction(backMenu)
@@ -4799,6 +5380,17 @@ class ProjectWindow(QMainWindow):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
+    def updateChart(self):
+        try:
+            currentText= self.chartFilter.currentText()
+            if currentText=="This week":
+                self.rscManager.resourcePeriodFilter=("Weekly",QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1).toString("dd/MM/yyyy"))
+                self.rscManager.updateAllDisplay()
+            elif currentText=="Look ahead":
+                self.rscManager.resourcePeriodFilter=("Look ahead",None)
+                self.rscManager.updateAllDisplay()    
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     def homeAction(self):
         try:
             widget.setCurrentWidget(initwindow)
@@ -4809,1207 +5401,6 @@ class ProjectWindow(QMainWindow):
             # widget.resize(872,910)      
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class ProjectResourceWindow(QMainWindow):
-    def __init__(self):
-        try:
-            super().__init__()
-            self.NewResourceButton=ToolButton(" New Resource ", icon=newaction_icon, icon_width=25, icon_height=25,  min_height=40, buttonStyle=Qt.ToolButtonTextBesideIcon, clicked=self.newResourceClicked)
-            self.AutoCompletefromBidButton=ToolButton(" Auto Complete\nfrom Bid ", icon_height=25,  min_height=40, buttonStyle=Qt.ToolButtonTextBesideIcon)
-            self.AutoCompleteQAButton=ToolButton(" Auto Complete\nQA ", icon_height=25,  min_height=40, buttonStyle=Qt.ToolButtonTextBesideIcon)
-            self.RefreshButton = ToolButton(" Refresh ", icon=refresh_icon, icon_width=40, icon_height=35, clicked=self.refreshResourceWindow)
-
-            periodLayout=QGridLayout()
-            self.periodAllRadioButton=QRadioButton("All")
-            self.periodWeekRadioButton=QRadioButton("Weekly")
-            self.periodMonthRadioButton=QRadioButton("Monthly")
-            self.period_weeks=NavigationLayout()
-            thisweek = QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1)
-            for count in range(30):
-                start= thisweek.addDays(count*7)
-                end = start.addDays(4)
-                if count==0: 
-                    self.period_weeks.addItem("This week",start) 
-                elif end.year()==QDate.currentDate().year():
-                    self.period_weeks.addItem(f"{start.toString('MMM dd')} - {end.toString('MMM dd')}",start) 
-                else:
-                    self.period_weeks.addItem(f"{start.toString('MMM dd')} - {end.toString('MMM dd/yy')}",start)
-
-            self.period_months=NavigationLayout()
-            # self.period_months.addItems(["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"])
-            self.period_months.addItems(["January","February","March","April","May","June","July","August","September","October","November","December"])
-            self.period_months.itemsBox.setFixedSize(100,26)
-            for chk in [self.periodAllRadioButton, self.periodWeekRadioButton, self.periodMonthRadioButton]:
-                chk.setFixedSize(100,30)
-                chk.setStyleSheet("""QRadioButton{ padding: 5px; color: black; background-color: #fcfcfc;}
-                                    QRadioButton::checked{color: #2f2f2f; background: #c4dcf4; border: 1px solid #acccec;} """)#QRadioButton::indicator:checked{background-color: #2f2f2f;}
-                chk.clicked.connect(self.periodChanged)
-            for box in [self.period_weeks.itemsBox, self.period_months.itemsBox]:  
-                self.period_weeks.itemsBox.setFixedSize(160,26)
-                self.period_months.itemsBox.setFixedSize(160,26)
-
-                box.currentIndexChanged.connect(self.periodChanged)
-
-            periodLayout.addWidget(self.periodAllRadioButton,1,0)#,alignment=Qt.AlignCenter)
-            periodLayout.addWidget(self.periodWeekRadioButton,1,1)#,alignment=Qt.AlignCenter)
-            periodLayout.addWidget(self.periodMonthRadioButton,1,2)#,alignment=Qt.AlignCenter)
-            # periodLayout.addWidget(self.period_weeks,1,1,1,1)#,alignment=Qt.AlignLeft)
-            # periodLayout.addWidget(self.period_months,1,1,1,1)#,alignment=Qt.AlignLeft)
-            self.period_stackedWidget=QStackedWidget()
-            self.period_stackedWidget.addWidget(QWidget())
-            self.period_stackedWidget.addWidget(self.period_weeks)
-            self.period_stackedWidget.addWidget(self.period_months)
-            self.period_stackedWidget.setMaximumHeight(50)
-            periodLayout.addWidget(self.period_stackedWidget,0,0,1,3)#,alignment=Qt.AlignLeft)
-            periodLayout.setVerticalSpacing(0)
-            periodLayout.setColumnStretch(3,2)
-
-            # periodLayout.setSpacing(0)
-
-
-            resources=Resources()
-            resources.getAll()
-            self.projectResources=resources.resourcesByProject.get(f"{ThisProject_no} - {ThisProject_name}",[])
-            self.projectResources_df=pd_DataFrame(self.projectResources)
-            # print(self.projectResources_df)
-            self.resourceTable=ResourceTable(self.refreshResourceWindow)
-            self.resourceTable.updateTable(self.projectResources)
-            # self.resourceTable.setMaximumWidth(650)
-
-            self.resourceChart=ResourceChart()
-
-            # self.periodAllRadioButton.click()
-
-            #Fees layout
-            feesLayout=QVBoxLayout()
-            for label in ["Fee for stage", "Resourced Fee", "Fee already spent", "Current Profit/Loss for Stage"]:
-                label=QLabel(label)
-                displaylabel=QLabel()
-                displaylabel.setFixedSize(300,25)
-                displaylabel.setStyleSheet("background:#fcfcfc; padding: 6px; color: #adadad;")
-                feesLayout.addWidget(label)
-                feesLayout.addWidget(displaylabel)
-                feesLayout.addStretch(1)
-            feesLayout.addStretch(10)
-
-            projectTeamTable=ProjectTeamTable()
-
-            self.OptionsLayout=QHBoxLayout()
-            self.OptionsLayout.addStretch(1)
-            self.OptionsLayout.addWidget(self.NewResourceButton)
-            self.OptionsLayout.addStretch(1)
-            self.OptionsLayout.addWidget(self.AutoCompletefromBidButton)
-            self.OptionsLayout.addStretch(1)
-            self.OptionsLayout.addWidget(self.AutoCompleteQAButton)
-            self.OptionsLayout.addStretch(1)
-            self.OptionsLayout.addWidget(self.RefreshButton)
-            self.OptionsLayout.addStretch(2)
-            self.OptionsLayout.addWidget(projectTeamTable)
-
-            resourceBoardLayout=QGridLayout()
-            resourceBoardLayout.addLayout(periodLayout, 0, 0)
-            resourceBoardLayout.addWidget(self.resourceTable.resource_Search, 1, 0)
-            self.resourceTable.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            self.resourceChart.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            resourceBoardLayout.addWidget(self.resourceTable, 2, 0)
-            resourceBoardLayout.addWidget(self.resourceChart, 2, 1)
-
-            MainLayout=QGridLayout()
-            MainLayout.addLayout(self.OptionsLayout, 0, 0)
-            MainLayout.addLayout(resourceBoardLayout, 1, 0, 1, 2)
-
-            # #Page Layouts
-            # self.OptionsLayout=QHBoxLayout()
-            # self.OptionsLayout.addStretch(2)
-            # self.OptionsLayout.addWidget(self.NewResourceButton)
-            # self.OptionsLayout.addStretch(1)
-            # self.OptionsLayout.addWidget(self.AutoCompletefromBidButton)
-            # self.OptionsLayout.addStretch(1)
-            # self.OptionsLayout.addWidget(self.AutoCompleteQAButton)
-            # self.OptionsLayout.addStretch(38)
-            # self.OptionsLayout.addWidget(self.RefreshButton)  
-            # self.OptionsLayout.addStretch(2)
-            # MainLayout=QGridLayout()
-            # # filterHBox=QHBoxLayout()
-            # # filterHBox.addLayout(periodLayout)
-            # # filterHBox.addWidget(self.resourceTable.userFilterBox)
-            # # filterHBox.addStretch(1)
-            # # MainLayout.addLayout(filterHBox, 0, 0)
-            # # MainLayout.addLayout(self.OptionsLayout, 0, 0)
-            # MainLayout.addLayout(periodLayout, 1, 0)
-            # MainLayout.addWidget(self.resourceTable.resource_Search, 2, 0)
-            # hbox=QHBoxLayout()
-            # hbox.addWidget(self.resourceTable)
-            # hbox.addWidget(self.resourceChart)
-            # MainLayout.addLayout(hbox, 3, 0)
-            # # MainLayout.addWidget(self.resourceTable, 3, 0)
-            # # MainLayout.addWidget(self.resourceChart, 3, 1)
-            # MainLayout.addWidget(projectTeamTable, 0, 0)
-            # # MainLayout.addWidget(projectTeamTable, 0, 1)
-            # MainLayout.addLayout(feesLayout, 0, 1)
-            
-            # MainLayout.setColumnStretch(0,1) #this prevents the widgets from resizing when you switch screens
-            # MainLayout.setColumnStretch(1,1)
-
-            
-            FullLayout=QVBoxLayout()
-            FullLayout.addLayout(self.OptionsLayout)
-            FullLayout.addLayout(MainLayout)  
-            Page =QWidget()
-            Page.setLayout(FullLayout)
-            self.setCentralWidget(Page)
-            menuBar = self.menuBar()
-            
-            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
-            backMenu= QAction(icon=QIcon(back_icon), parent= self)
-            menuBar.addAction(backMenu)
-            menuBar.addAction(homeMenu)
-            homeMenu.triggered.connect(self.homeAction)
-            backMenu.triggered.connect(self.backAction)
-            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            menuBar = self.menuBar()
-            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
-            backMenu= QAction(icon=QIcon(back_icon), parent= self)
-            menuBar.addAction(backMenu)
-            menuBar.addAction(homeMenu)
-            homeMenu.triggered.connect(self.homeAction)
-            backMenu.triggered.connect(self.backAction)
-            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
-    
-    def periodChanged(self):
-        try:
-            for radio in [self.periodAllRadioButton, self.periodWeekRadioButton, self.periodMonthRadioButton]:
-                if radio.isChecked():
-                    period=radio.text()
-                    break
-            if period=="All":
-                self.period_stackedWidget.setCurrentIndex(0)
-                self.resourceChart.updateChart(self.projectResources_df, period="All")
-            elif period=="Weekly":
-                self.period_stackedWidget.setCurrentIndex(1)
-                self.resourceChart.updateChart(self.projectResources_df, period="Weekly", filter=self.period_weeks.itemsBox.currentData().toString("dd/MM/yyyy"))
-            elif period=="Monthly":
-                self.period_stackedWidget.setCurrentIndex(2)
-                self.resourceChart.updateChart(self.projectResources_df, period="Monthly", filter=self.period_months.itemsBox.currentText())
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def newResourceClicked(self):
-        try:
-            resourceDialog=ResourceDialog()
-            resourceDialog.newResource(oncomplete=self.refreshResourceWindow,project=f"{ThisProject_no} - {ThisProject_name}")
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def refreshResourceWindow(self):
-        try:
-            #refetch the resources
-            allResources=Resources()
-            allResources.getAll()
-            #update the table and chart 
-            self.projectResources=allResources.resourcesByProject.get(f"{ThisProject_no} - {ThisProject_name}",[])
-            self.projectResources_df=pd_DataFrame(self.projectResources)
-            self.resourceTable.updateTable(self.projectResources)
-            self.resourceChart.updateChart(self.projectResources_df, period="All")
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    def backAction(self):
-        try:
-            #Go back to project page
-            widget.setCurrentWidget(projectwindow)
-            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def homeAction(self):
-        try:
-            widget.setCurrentWidget(initwindow)
-            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class FeesandFinancesWindow(QMainWindow):
-    def __init__(self):
-        try:
-            super().__init__()
-          #New  Button
-            NewButton = QToolButton()
-            NewButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            NewButton.setText("New")
-            NewButton.setIcon(QIcon(newdrawing_icon))
-            NewButton.setStyleSheet("""QToolButton{border:0.5px;
-            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            # NewButton.setGeometry(QRect(40, 63,170, 70))
-            NewButton.setIconSize(QSize(75, 42))
-            menu=QMenu()
-            NewButton.setMenu(menu)
-            NewButton.setPopupMode(QToolButton.InstantPopup)
-            self.feeaction=menu.addAction("Fees Proposal")
-            # self.bidaction=menu.addAction("Bid Document")
-
-            self.feeaction.triggered.connect(lambda:self.NewFeesProposalClicked())
-          #Refresh button
-            RefreshButton = QToolButton()
-            RefreshButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            RefreshButton.setText(" Refresh ")
-            RefreshButton.setIcon(QIcon(refresh_icon))
-            RefreshButton.setStyleSheet("""QToolButton{border:0.5px;
-            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            RefreshButton.setIconSize(QSize(45, 35))
-            RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
-            QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
-          #Help button
-            HelpButton = QToolButton()
-            # HelpButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            HelpButton.setText(" ? ")
-            # HelpButton.setIcon(QIcon(refresh_icon))
-            # HelpButton.setStyleSheet("""QToolButton{border:0.5px;
-            # border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            # background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            # HelpButton.setIconSize(QSize(45, 35))
-            HelpButton.clicked.connect(self.HelpClicked)#Connecting the button to its function when clicked
-
-          #Project Label
-            currentProjectLabel= QLabel("Fees and Finance:    " +ThisProject_foldername)
-            currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
-            self.FeesTable = QTableWidget(1,1)
-          #Fees Table
-            if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal'):
-                self.FeesTable.setHorizontalHeaderLabels(["Reports Name"])
-                d=0
-                for file in listdir(ProjectFinanceFolder+'\\3 Fee Proposal'):
-                    if file.endswith(".docx"):
-                        self.FeesTable.setRowCount(d+1)
-                        self.FeesTable.setItem(d,0,QTableWidgetItem(file.rsplit('.',1)[0]))
-                        d+=1
-                self.FeesTable.itemDoubleClicked.connect(lambda: self.openfile(self.FeesTable))
-                QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.FeesTable))
-                self.FeesTable.installEventFilter(self)
-
-            else:
-                self.FeesTable.setItem(0, 0,QTableWidgetItem("Path '" + ProjectFinanceFolder + '\\3 Fee Proposal' + "' not found"))
-                self.FeesTable.item(0,0).setBackground(QColor("#EE1111"))
-                self.feeaction.setEnabled(False)
-                self.FeesTable.horizontalHeader().setVisible(False)
-          #Table header expansion   
-            header = self.FeesTable.horizontalHeader()       
-            header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            # header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-            # header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-            colsizelist=[self.FeesTable.horizontalHeader().sectionSize(0)]
-            # self.FeesTable.setSelectionBehavior(1)
-            # #Table expansion
-            for i in range(1):
-                header.setSectionResizeMode(i, QHeaderView.Interactive)
-                self.FeesTable.setColumnWidth(i,colsizelist[i]+60)
-            self.FeesTable.setShowGrid(False)
-            self.FeesTable.verticalHeader().setVisible(False)
-            self.FeesTable.setHorizontalScrollMode(QTableWidget.ScrollPerPixel)
-            self.FeesTable.horizontalHeader().setMinimumWidth(500)
-
-            self.projectadminfile=ProjectFinanceFolder+"\\4 Finance Admin\\PROJECT FINANCE - "+ThisProject_name+".xlsx"
-
-
-            #Invoices process
-            financeAdminButton = QPushButton("Finance Admin")
-            financeAdminButton.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
-            financeAdminButton.clicked.connect(self.OpenFinanceAdmin)
-
-            #Create invoice button
-            invoiceButton = QPushButton("Create\n Invoice")
-            invoiceButton.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
-            invoiceButton.clicked.connect(self.CreateInvoice)
-
-            invoiceManagementLabel=QLabel("Invoice Management")
-            invoiceManagementLabel.setFont(QFont("Gill Sans MT", 12))
-            invoiceManagementLabel.setAlignment(Qt.AlignCenter)
-            invoiceGrid=QGridLayout()
-            invoiceGrid.addWidget(financeAdminButton,0,0)
-            invoiceGrid.addWidget(invoiceButton,0,1)
-            items=(invoiceGrid.itemAt(i) for i in range(invoiceGrid.count()))
-            for w in items:
-                w.widget().setMinimumHeight(163)
-                w.widget().setMaximumWidth(200)
-                w.widget().setFont(QFont("Gill Sans MT", 12))
-            
-            invoiceVLayout=QVBoxLayout()
-            invoiceVLayout.addStretch(1)
-            invoiceVLayout.addWidget(invoiceManagementLabel)
-            invoiceVLayout.addStretch(2)
-            invoiceVLayout.addLayout(invoiceGrid)
-            invoiceVLayout.addStretch(9)
-            invoiceWidget=QWidget()
-            # invoiceWidget.setLayout(invoiceVLayout)
-            # invoicel
-
-
-          #Page formats
-            # self.setCentralWidget(self.scroll)
-            self.OptionsLayout=QGridLayout()
-            self.OptionsLayout.addWidget(NewButton,1,0)
-            self.OptionsLayout.addWidget(RefreshButton,1,1)
-            self.OptionsLayout.addWidget(HelpButton,1,2)
-
-            self.OptionsLayout.setHorizontalSpacing(30)
-
-            TopLayout=QHBoxLayout()
-            TopLayout.addStretch(1)
-            TopLayout.addLayout(self.OptionsLayout)
-            TopLayout.addStretch(18)
-            TopLayout.addWidget(currentProjectLabel)
-            TopLayout.addStretch(30)
-            
-
-            # feesLayout=QVBoxLayout()
-            # # sketchesLayout=QVBoxLayout()
-            # # feesLayout.addWidget(self.Fees_search)
-            # feesLayout.addWidget(self.FeesTable)
-
-            MainLayout= QHBoxLayout()
-            # lLayout=QVBoxLayout()
-            # # self.FeesTable.setMaximumWidth(1000)
-            # lLayout.addWidget(self.FeesTable)
-            # rLayout=QVBoxLayout()
-            # rLayout.addWidget(financeAdminButton)
-            # rLayout.addWidget(invoiceButton)
-            split=QSplitter()
-            split.addWidget(self.FeesTable)
-            # split.addWodget(invoiceGrid)
-            split.addWidget(invoiceWidget)
-            split.setSizes([500,500])
-            MainLayout.addWidget(split)
-
-            # MainLayout.addLayout(lLayout)
-            # MainLayout.addLayout(rLayout)
-            # MainLayout.addStretch(1)
-
-            FullLayout=QVBoxLayout()
-            FullLayout.addLayout(TopLayout)
-            FullLayout.addLayout(MainLayout,5) 
-            # FullLayout.addStretch(1)
-
-            Page =QWidget()
-            Page.setLayout(FullLayout)
-            self.setCentralWidget(Page)
-
-            menuBar = self.menuBar()
-            
-            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
-            backMenu= QAction(icon=QIcon(back_icon), parent= self)
-            menuBar.addAction(backMenu)
-            menuBar.addAction(homeMenu)
-            homeMenu.triggered.connect(self.homeAction)
-            backMenu.triggered.connect(self.backAction)
-            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
-
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def eventFilter(self, source, event): 
-        try:
-            if event.type() == QEvent.ContextMenu and source ==self.FeesTable:
-                if len(source.selectionModel().selectedRows())>0:
-                    menu = QMenu(self)
-                    menu.addAction("Delete",lambda: self.delete(source))
-                    menu.addAction("Open",lambda: self.openfile(source))
-                    menu.exec_(event.globalPos())
-                    return True
-            return super().eventFilter(source, event)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def delete(self, tableobj):
-        try:
-            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
-            if len(self.selectionindexes):
-                qm=QMessageBox()
-                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete these " + str(len(self.selectionindexes)) + " item(s)?", qm.Yes | qm.No)
-                if ret == qm.Yes:
-                    for i in self.selectionindexes:
-                        if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx"):
-                            while True:
-                                try:
-                                    remove(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx")
-                                    break
-                                except IOError:
-                                    #If there's error while opening the file, tell user to close the file to continue
-                                    MsgBox("Please make sure the "+ ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
-                        else:
-                            MsgBox(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-                    widget.removeWidget(feesandfinanceswindow)
-                    feesandfinanceswindow.__init__()
-                    widget.addWidget(feesandfinanceswindow) 
-                    widget.setCurrentWidget(feesandfinanceswindow)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def openfile(self, tableobj):
-        try:
-            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
-            for i in self.selectionindexes:
-                if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx"):
-                    Popen([ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx"],shell=True)
-                else:
-                    MsgBox(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def NewFeesProposalClicked(self):
-        try:
-            global newfeesdialog
-            newfeesdialog=NewFees_Dialog()
-            newfeesdialog.exec()
-
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def CreateInvoice(self):
-        try:
-            def getFeesnAddressFromAdmin():
-                try:
-                    month_year= monthYearCombo.currentText().split("/")
-                    month=int(month_year[0])
-                    year=int(month_year[1])
-                    tracktime(reset=True)
-                    if None in month_year: return
-                    dateFound=False    
-                    this_admin_data={"fees":[]}            
-                    projectadminfile=ProjectFinanceFolder+"\\4 Finance Admin\\PROJECT FINANCE - "+ThisProject_name+".xlsx"
-                    if path.exists(projectadminfile):
-                        while True:
-                            try:
-                                wb= load_workbook(projectadminfile, read_only=True, data_only=True)
-                                sheetnames=wb.sheetnames
-                                if "Incoming" in sheetnames:
-                                    sheet=wb["Incoming"]
-                                    last_row= sheet.max_row #Get last row in the sheet
-                                    #Get the column with the date
-                                    date_col=None
-                                    for r,values in enumerate(sheet.iter_rows(max_row=last_row, values_only=True)):
-                                        if r==0:
-                                            for c,val in enumerate(values):
-                                                if val.__class__==datetime and val.month==month and val.year==year:
-                                                    date_col=c
-                                                    dateFound=True
-                                                    break
-                                            else:
-                                                break #Specified date column not found
-                                        else:
-                                            if len(values)>date_col and values[date_col] not in [None,""]:
-                                                if r==1:
-                                                    this_admin_data["total"]=values[date_col]
-                                                else:
-                                                    fee_data={
-                                                        "PO":values[0] if values[0] not in [None,""] else "PO TBC",
-                                                        "Reference":values[1] if values[1] not in [None,""] else "TBC",
-                                                        "Amount":values[date_col]
-                                                        }
-                                                    this_admin_data["fees"].append(fee_data)
-                                if "Project Info" in sheetnames:
-                                    sheet=wb["Project Info"]
-                                    for r,values in enumerate(sheet.iter_rows(max_row=2,min_col=2,max_col=2, values_only=True)):
-                                        if r==0:
-                                            this_admin_data["client"]=values[0]
-                                        if r==1:
-                                            this_admin_data["address"]=values[0]
-                                wb.close()
-                                if not dateFound:
-                                    MsgBox("No invoice found for "+monthYearCombo.currentText(), setWindowTitle="          ", setIcon = QMessageBox.Information)
-                                    return
-                                break
-                            except IOError:
-                                MsgBox(projectadminfile+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Project Finance Admin file open",setIcon=QMessageBox.Critical)
-                    else:
-                        MsgBox(projectadminfile+" not found\n\nIf confused please contact software programmer",setWindowTitle="Project Finance Admin file missing",setIcon=QMessageBox.Critical)
-                        return
-                    if this_admin_data["fees"]==[]:
-                        MsgBox("No fees found for "+monthYearCombo.currentText(), setWindowTitle="          ", setIcon = QMessageBox.Information)
-                        return
-                    else:
-                        return this_admin_data
-                except:
-                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            def setInvoiceNo():
-                try:
-                    if newInvRadioBut.isChecked():
-                        excel=Dispatch("Excel.Application")
-                        excel.DisplayAlerts=False
-                        while True:
-                            try:
-                                #Fill the invoice template
-                                excel.Visible=False
-                                book = excel.Workbooks.Open(Invoices_Tracking_Schedule_xlsx)
-                                sheet=book.Worksheets(invs_sheetCombo.currentText())
-                                # last_row= sheet.max_row #Get last row in the sheet
-                                # sheet.Range(f"C{last_row+4}").Value=2442
-                                sheet.Range("C17").Value=2442
-                                book.Save()                                 
-                                break
-                            except Exception as e:
-                                book.Close(True)
-                                print(e)
-                        print("filled, waiting to close")
-                        book.Close(True)
-                        print("closed")
-                        # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
-                        if excel.Workbooks.Count==0:
-                            excel.Quit()
-                            print("quit")
-                        else:
-                            excel.Visible=True
-                            excel.DisplayAlerts=True
-
-
-
-
-                        # while True:
-                        #     try:
-                        #         wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=False, keep_links=False)# data_only=True)
-                        #         sheet=wb[invs_sheetCombo.currentText()]
-                        #         last_row= sheet.max_row #Get last row in the sheet
-                        #         #Loop through the rows to get the last invoice number (integer)
-                        #         # for r,values in enumerate(sheet.iter_rows(min_row=max_row+1, max_row=last_row, min_col=1, max_col=1, values_only=True)):
-                        #         all_rows = list(sheet.iter_rows(max_row=last_row, min_row=12, min_col=3, max_col=3, values_only=True))
-                        #         #remove trailing empty rows
-                        #         for index in range(len(all_rows) - 1, -1, -1):
-                        #             if isinstance(all_rows[index][0], int):
-                        #                 row=index+13
-                        #                 invoice_no=all_rows[index][0]+1
-                        #                 break
-                        #         else:
-                        #             row=13
-                        #             invoice_no=1
-                        #         # print(row,invoice_no)
-                        #         #insert a row in the row
-                        #         # sheet.insert_rows(row)
-                        #         # fill=[cel.fill for col in sheet.iter_cols(min_row=row-1,max_row=row-1,min_col=3,max_col=3) for cel in col]
-                        #         # print(fill)
-                        #         # sheet.cell(row,3).fill=copy(fill[0])
-                        #         # if sheet.cell(last_row,0).value!=None:
-                        #         sheet.cell(row,3).value=invoice_no
-                        #         wb.save(Invoices_Tracking_Schedule_xlsx)
-                        #         wb.close()
-                        #         break
-                        #     except IOError:
-                        #         MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
-                
-
-                except:
-                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-            def fillandExportInvoiceTemplate(this_admin_data):
-                try:
-                    setInvoiceNo()
-                    tracktime(msg="Gotten admin data")
-                    # for i in invoice_data:
-                    #     print(i)
-                    def get_FeeAndSubTotal_Row():
-                        '''Gets the fee total and subtotal row in the invoice template.
-                        - returns the row number of the fee total and subtotal row
-                        '''
-                        try:
-                            feetotal_row=None
-                            subtotal_row=None
-                            while True:
-                                try:
-                                    wb= load_workbook(Invoice_Template, data_only=True, read_only=True)
-                                    sheet=wb["Sheet1"]
-                                    for r,values in enumerate(sheet.iter_rows(min_row=13, values_only=True)):
-                                        if 'Fee Total' in values: feetotal_row= r+13
-                                        if 'Subtotal' in values: subtotal_row= r+13
-                                    wb.close()
-                                    break
-                                except IOError:
-                                    MsgBox(Invoice_Template+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice Template file open",setIcon=QMessageBox.Critical)
-                            return feetotal_row, subtotal_row
-                        except:
-                            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-                    if path.exists(Invoice_Template):
-                        feetotal_row,subtotalrow=get_FeeAndSubTotal_Row()
-                        excel=Dispatch("Excel.Application")
-                        shrtcutshell=Dispatch("WScript.Shell")
-                        excel.Visible=False
-                        excel.DisplayAlerts=False
-                        if feetotal_row!=None and subtotalrow!=None and feetotal_row<subtotalrow:
-                            space_available=subtotalrow-feetotal_row-1
-                            invno=invoiceNoEdit.text()
-                            while True:
-                                try:
-                                    #Fill the invoice template
-                                    book = excel.Workbooks.Open(Invoice_Template)
-                                    sheet=book.Worksheets("Sheet1")
-                                    sheet.Range("G9").Value=f"{invno}"
-                                    sheet.Range("G10").Value=dateEdit.date().toString("dd/MM/yyyy")
-                                    client=this_admin_data["client"]
-                                    if client in [None,""]: client= ThisProject_client
-                                    sheet.Range("A14").Value=client
-                                    sheet.Range("A15").Value=this_admin_data["address"]
-                                    sheet.Range("A25").Value=f"{ThisProject_no}"
-                                    sheet.Range("C25").Value=ThisProject_name
-                                    #Fill the fees
-                                    fees=this_admin_data["fees"]
-                                    rows_needed=len(fees)-space_available
-                                    # space_available=len(fees)
-                                    #if the rows needed is greater than space available, insert rows
-                                    if rows_needed>0:
-                                        #add the needed rows above the subtotal row
-                                        sheet.Rows(f"{subtotalrow}:{subtotalrow+rows_needed-1}").Insert()
-                                        #update the subtotal row
-                                        subtotalrow+=rows_needed
-                                    elif rows_needed<0:
-                                        #delete the extra rows
-                                        sheet.Rows(f"{subtotalrow+rows_needed}:{subtotalrow-1}").Delete()
-                                        #update the subtotal row
-                                        subtotalrow+=rows_needed       
-                                    for r in range(feetotal_row+1,feetotal_row+len(fees)+1):
-                                        feeindex=r-feetotal_row-1
-                                        #Fill the fee details
-                                        sheet.Range(f"A{r}").Value=fees[feeindex]["PO"]
-                                        sheet.Range(f"C{r}").Value=fees[feeindex]["Reference"]
-                                        sheet.Range(f"G{r}").Value=fees[feeindex]["Amount"]
-                                        #Merge  A:B and C:F cells for each inserted row
-                                        sheet.Range(f"A{r}:B{r}").Merge()
-                                        sheet.Range(f"C{r}:F{r}").Merge()
-                                        #Set bottom border, left border and right border
-                                        sheet.Range(f"A{r-1}:G{r}").Borders(9).Weight=3 #bottom border
-                                        sheet.Range(f"A{r}").Borders(7).Weight=3 #left border
-                                        sheet.Range(f"B{r}").Borders(10).Weight=2 #right border
-                                        sheet.Range(f"G{r}").Borders(7).Weight=2 #
-                                        sheet.Range(f"G{r}").Borders(10).Weight=3 
-                                        #Auto fit columns C
-                                        sheet.Columns("C").AutoFit()
-                                    #put total in the subtotal row
-                                    sheet.Range(f"G{subtotalrow}").Value=this_admin_data["total"]
-                                    #Export the invoice template
-                                    # book.SaveAs(r"C:\Users\olumi\OneDrive\Documents\Acer\_Chunks"+f"\\{invno}.pdf", FileFormat=57)
-                                    invfilename="RCDCtest - INV - "+str(invno).zfill(4)+" - "+ ThisProject_name+" - "+f"{ThisProject_no}"
-                                    if path.exists(Invoice_Issues):
-                                        book.SaveAs(Invoice_Issues+"\\"+invfilename+".pdf", FileFormat=57)
-                                    #Save the shortcut
-                                        projectinvoicefolder=Project_Folders_dst+"\\"+f"{ThisProject_no}"+" - "+ThisProject_name+"\\1 Fees and Invoicing\\1 Invoices"
-                                        if path.exists(projectinvoicefolder):
-                                            shortcut=shrtcutshell.CreateShortCut(projectinvoicefolder+"\\"+invfilename+".lnk")
-                                            shortcut.Targetpath=Invoice_Issues+"\\"+invfilename+".pdf"
-                                            shortcut.save() 
-                                    # book.application.displayalerts=False
-                                    tracktime(msg="Filled and pdfed all invoices")
-                                    book.Close(True)
-                                    break
-                                except Exception as e:
-                                    book.Close(True)
-                                    MsgBox("Make sure the invoice template and existing pdf for this invoice is closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice template or invoice pdf open",setIcon=QMessageBox.Critical)
-                                    # print(e)
-
-                        # book.Close(True)
-                        tracktime(msg="Closed invoice template")
-                        # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
-                        if excel.Workbooks.Count==0:
-                            excel.Quit()
-                        else:
-                            excel.Visible=True
-                            excel.DisplayAlerts=True
-                        # shrtcutshell.Quit()
-                        # print("Done")
-                        dialog.reject()
-                        msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
-                        msg.exec_()
-                except:
-                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            
-            def funcOk():
-                try:
-                    if updateInvRadioBut.isChecked():
-                        if invoiceNoEdit.text() in [None,""]:
-                            MsgBox("Enter invoice no.", setWindowTitle="Error", setIcon = QMessageBox.Information)
-                            return
-                        invoice_no=invoiceNoEdit.text()
-                    this_admin_data=getFeesnAddressFromAdmin()
-                    if this_admin_data:
-                       if newInvRadioBut.isChecked():
-                            setInvoiceNo()
-                            print("Invoice no. set")
-                    #    fillandExportInvoiceTemplate(this_admin_data)
-
-                   
-                except:
-                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            if path.exists(Invoices_Tracking_Schedule_xlsx):
-                #Get all sheets in the workbook that start with 'INVS-Year '
-                while True:
-                    try:
-                        wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=True, data_only=True)
-                        sheet_names=wb.sheetnames
-                        sheet_names=[sheet for sheet in sheet_names if sheet.startswith("INVS-Year ")]
-                        wb.close()
-                        break
-                    except IOError:
-                        MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
-            else:    
-                MsgBox("No invoice tracking schedule found\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule not found",setIcon=QMessageBox.Critical)
-                return
-
-            if sheet_names==[]:
-                MsgBox("No sheet with name starting with 'INVS-Year ' found in the invoice tracking schedule\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule sheet not found",setIcon=QMessageBox.Critical)
-                return
-            curdate=QDate.currentDate()
-            dialog=QDialog()
-            dateEdit=QDateEdit()
-            dateEdit.setDate(curdate)
-            monthYearCombo=QComboBox()
-            
-            # Get from last two months till next month
-            months=[curdate.addMonths(i).toString("MM/yyyy") for i in range(-5,2)]
-            monthYearCombo.addItems(months)
-            monthYearCombo.setCurrentIndex(len(months)-2)
-            # invs_sheetCombo=QComboBox()
-            invs_sheetCombo=QComboBox()
-            invs_sheetCombo.addItems(sheet_names)
-            invs_sheetCombo.setCurrentIndex(len(sheet_names)-1)
-            #New or updated radio button
-            newInvRadioBut=QRadioButton("New Invoice")
-            updateInvRadioBut=QRadioButton("Update")
-            invoiceNoEdit=QLineEdit()
-            invoiceNoEdit.setPlaceholderText("Invoice No.")
-            invoiceNoEdit.setValidator(QRegExpValidator(QRegExp("[0-9]{3}")))
-            newInvRadioBut.toggled.connect(lambda: invoiceNoEdit.setHidden((newInvRadioBut.isChecked())))
-            updateInvRadioBut.toggled.connect(lambda: invoiceNoEdit.setHidden(not(updateInvRadioBut.isChecked())))
-            newInvRadioBut.setChecked(True)
-            neworupdateVLayout=QGridLayout()
-            neworupdateVLayout.addWidget(newInvRadioBut,0,0)
-            neworupdateVLayout.addWidget(updateInvRadioBut,0,1)
-            neworupdateVLayout.addWidget(invoiceNoEdit,1,1,1,2)
-
-            form=QFormLayout()
-            form.addRow("Date you're invoicing:",dateEdit)
-            form.addRow("Invoice for which Month:",monthYearCombo)
-            form.addRow("INVS Worksheet:",invs_sheetCombo)
-            form.addRow(neworupdateVLayout)
-            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            buttonBox.accepted.connect(funcOk)
-            buttonBox.rejected.connect(dialog.reject)
-            form.addRow(buttonBox)
-
-            dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-            dialog.setWindowTitle("Create Invoices")
-            dialog.setLayout(form)
-            dialog.resize(300,150)
-            dialog.exec()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def OpenFinanceAdmin(self):
-        try:
-
-            if path.exists(self.projectadminfile):
-                #Open the issue sheet
-                startfile(self.projectadminfile)
-            else:
-                MsgBox("'"+self.projectadminfile+"' not found", setWindowTitle="Finance Admin file missing", setIcon = QMessageBox.Information)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def RefreshClicked(self):
-        try:
-            widget.removeWidget(feesandfinanceswindow)
-            feesandfinanceswindow.__init__()
-            widget.addWidget(feesandfinanceswindow)
-            widget.setCurrentWidget(feesandfinanceswindow)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def HelpClicked(self):
-        try:
-            with open(help_json, 'r') as f:
-                self.data=json_load(f)
-            MsgBox(self.data["Fees and Finances"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def backAction(self):
-        try:
-            #Go back to project page
-            widget.setCurrentWidget(projectwindow)
-            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def homeAction(self):
-        try:
-            widget.setCurrentWidget(initwindow)
-            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class NewFees_Dialog(QDialog):
-    def __init__(self):
-        try: 
-            super().__init__()
-            self.resize(650, 700)
-           #Report Title
-            self.setStyleSheet("font-size:13px;")
-            self.ReportTitleLabel= QLabel("Report Title")
-            self.ReportTitle=QLineEdit()
-            self.ReportTitleLayout= QHBoxLayout()
-            self.ReportTitleLayout.addWidget(self.ReportTitleLabel)
-            self.ReportTitleLayout.addWidget(self.ReportTitle)
-            
-           #Services
-            self.stageCheckDict={}  #Dict to with key as service checkbox and value as fee checkbox (or '' if no fee checkbox)
-            self.headerlist=[]
-            self.stageChecks= QVBoxLayout()
-            self.stageChecks.setSpacing(2)
-            for stage in ["MEP","Sustainability Consultancy","BREEAM","Embodied Carbon","Health and Wellbeing","Business Case","Heat Decarbonisation Works","Operational Carbon"]:
-                self.stageCheck= QCheckBox(text=stage)
-                self.stageRow=QHBoxLayout()
-                self.stageRow.addWidget(self.stageCheck)
-                self.stageCheck.stateChanged.connect(self.serviceCheckChanged)
-                if stage in ["MEP","Sustainability Consultancy"]:
-                    self.headerlist.append(stage)
-                    self.stageCheckDict[self.stageCheck]='' #No fee checkbox for MEP and Sustainability Consultancy
-                    self.stageChecks.addLayout(self.stageRow) #Add stage checkbox to stageChecks
-                    for self.substage in ["Feasibility","Stage 1", "Stage 2","Stage 3","Stage 4","Stage 5","Stage 6","Stage 7"]:
-                        self.substageCheck=QCheckBox(text=stage+" "+self.substage)
-                        self.stageFee= QDoubleSpinBox()
-                        self.stageFee.setPrefix('£')
-                        self.stageFee.setMaximum(1000000000000)
-                        self.stageRow=QHBoxLayout()
-                        self.stageRow.addSpacing(30)
-                        self.stageRow.addWidget(self.substageCheck)
-                        self.stageCheckDict[self.substageCheck]=self.stageFee
-                        self.substageCheck.stateChanged.connect(self.serviceCheckChanged)
-                        self.substageCheck.setEnabled(False)
-                        self.stageFee.setEnabled(False)
-                        self.stageRow.addStretch(1)
-                        self.stageRow.addWidget(self.stageFee)
-                        self.stageChecks.addLayout(self.stageRow)
-                else:
-                    self.stageFee= QDoubleSpinBox()
-                    self.stageFee.setPrefix('£')
-                    self.stageFee.setMaximum(1000000000000)
-                    self.stageCheckDict[self.stageCheck]=self.stageFee
-                    self.stageFee.setEnabled(False)
-                    self.stageRow.addStretch(1)
-                    self.stageRow.addSpacing(200)
-                    self.stageRow.addWidget(self.stageFee)
-                    self.stageChecks.addLayout(self.stageRow)
-            self.checkedlist=[]
-           
-           #Frameworks
-            self.frameworkCheckList=[]
-            self.frameworkChecks= QVBoxLayout()
-            self.frameworkChecks.setSpacing(2)
-            for framework in ["Framework A","Framework B","Framework C","Framework D","Framework E","Framework F","RCDC Custom Framework"]:
-                self.frameworkCheck= QCheckBox(text=framework)
-                self.frameworkChecks.addWidget(self.frameworkCheck)
-                self.frameworkCheckList.append(self.frameworkCheck)
-           #Issue Date
-            self.IssueDate=QLabel('Issue Date',self)
-            self.IssueDateEdit=QDateEdit(self)
-            self.IssueDateEdit.setDate(QDate.currentDate())
-            self.IssueDateEdit.setDisplayFormat("yyyy/MM/dd")
-            self.IssueLayout=QHBoxLayout()
-            self.IssueLayout.addWidget(self.IssueDate)
-            self.IssueLayout.addWidget(self.IssueDateEdit)
-
-           #Groupbox layout
-            # self.Services=QGroupBox("Service(s)")
-            # self.Services.setStyleSheet("""QGroupBox{ font: 13px;  font-weight: bold; border:1px solid rgba(0, 0, 0, .3); opacity:0.4; margin-top: 0.8em;} 
-            #                                 QGroupBox::title {top: -10px;left: 10px;}""")
-            # self.Services.setLayout(self.stageChecks)
-            servicescroll=QScrollArea()
-            servicescroll.setWidgetResizable(True)
-            servicescroll.setWidget(QWidget())
-            servicescroll.widget().setLayout(self.stageChecks)
-            self.Frameworks=QGroupBox("Fee Chart Framework:")
-            self.Frameworks.setStyleSheet("""QGroupBox{ font-size: 13px;  font-weight: bold; border:1px solid rgba(0, 0, 0, .3); opacity:0.4; margin-top: 0.8em;} 
-                                            QGroupBox::title {top: -10px;left: 10px;}""")
-            self.Frameworks.setLayout(self.frameworkChecks)
-
-           #Final layouts
-            self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            mainLayout = QVBoxLayout()
-            
-            serviceLabel=QLabel("Service(s):")
-            serviceLabel.setStyleSheet("font-weight:bold;")
-            mainLayout.addWidget(serviceLabel)
-            mainLayout.addWidget(servicescroll)
-            mainLayout.addWidget(self.Frameworks)
-            mainLayout.addLayout(self.IssueLayout)
-            mainLayout.addLayout(self.ReportTitleLayout)
-            mainLayout.addWidget(self.buttonBox)
-            mainLayout.setSpacing(10)
-
-            # self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-            self.setLayout(mainLayout)
-            self.setWindowTitle("New Fee Proposal")
-            self.installEventFilter(self)
-                                    
-            self.buttonBox.accepted.connect(self.funcOK)
-            self.buttonBox.rejected.connect(self.reject)
-            # self.Services.setStyleSheet("padding-left:10px;")
-            # self.setStyleSheet("background:#F3F3F3;color:#0455BF; ")
-            # self.ReportTitle.setStyleSheet("background:white; border;1px solid black;")
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            newfeesdialog.close()
-
-    def eventFilter(self, source, event):
-        try:
-            if event.type() == QEvent.EnterWhatsThisMode:
-                QWhatsThis.leaveWhatsThisMode()
-                with open(help_json, 'r') as f:
-                    self.data=json_load(f)
-                # event.ignore()
-                MsgBox(self.data["New Fee Proposal"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
-                return True
-            return super().eventFilter(source, event)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def closeEvent(self,event): #Added to clear event because of question mark button weirdness
-        try:
-            self.removeEventFilter(self)
-            super(NewFees_Dialog,self).closeEvent(event)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def serviceCheckChanged(self):
-        try:
-            self.checkedlist=[] #holds list of all checked stages
-            self.headerlist=list(filter(lambda i:self.stageCheckDict[i]=='',self.stageCheckDict)) #list of all stages with no fee checkbox
-            for i in self.stageCheckDict: #loop through all stage checkboxes
-                if self.stageCheckDict[i]=='': #if stage checkbox has no fee checkbox
-                    for j in self.stageCheckDict: #loop through all stage checkboxes and enable subs if checked
-                        if j.text()[:len(i.text())+1]==i.text()+" ": #if substage checkbox is found (i.e. if substage starts with stage name)
-                            j.setEnabled(i.isChecked()) #enable/disable substage checkbox
-                            if i.isChecked()==False: j.setChecked(False) #if stage is unchecked, uncheck all substages
-                            self.stageCheckDict[j].setEnabled(i.isChecked()) #enable/disable fee checkbox
-                else:
-                    self.stageCheckDict[i].setEnabled(i.isChecked())#fee box enabling
-                    if i.isChecked(): self.checkedlist.append(i) #if stage is checked, add to checkedlist
-            #getting needed title from the superstages name
-            self.titleList=list(map(lambda i: i.text(),self.checkedlist))#get object text from all ticked checkboxes
-            if self.titleList!= []:
-                for i in self.headerlist: #running loop to change stage name to superstage name
-                    for j in range(len(self.titleList)):
-                        if self.titleList[j][:len(i.text())+1]==i.text()+" ":
-                            self.titleList[j]=i.text()
-                self.titleList= list(dict.fromkeys(self.titleList)) #removing duplicate items from list
-                if "Sustainability Consultancy" in self.titleList: self.titleList[self.titleList.index("Sustainability Consultancy")]="Sustainability" 
-                if len(self.titleList)==1:
-                    self.title=self.titleList[0]
-                    self.ReportTitle.setText("RCDC_"+ThisProject_client+" - "+ThisProject_name+" "+self.title +" Fee Proposal")
-                elif len(self.titleList)==2:
-                    self.title=self.titleList[0]+" and "+self.titleList[1] 
-                    self.ReportTitle.setText("RCDC_"+ThisProject_client+" - "+ThisProject_name+" "+self.title+" Fee Proposal")
-                elif len(self.titleList)>2:
-                    self.title=', '.join(self.titleList[:-1])+" and " + self.titleList[-1]
-                    self.ReportTitle.setText("RCDC_"+ThisProject_client+" - "+ThisProject_name+" "+self.title +" Fee Proposal")
-            else:
-                self.ReportTitle.setText('')
-            # self.ReportTitle.setText(self.titleList[0])
-
-            #hidding subcheckboxes
-            # for i in self.stageCheckDict:
-            #     if self.stageCheckDict[i]=='':
-            #         for j in self.stageCheckDict:
-            #             if j.text()[:len(i.text())+1]==i.text()+" ":
-            #                 j.setHidden(not(i.isChecked()))
-        
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def funcOK(self):
-        try:
-            if self.ReportTitle.text()!= '' and self.checkedlist!= [] : #if title box not empty and stages are checked
-                if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal'):
-                    if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+'.docx')==False:
-                        if path.exists(FeeProposalTemp)==True:
-                            if len(ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+'.docx')<=259:
-                                self.ThisClientLogo=""
-                                proceed=""
-                                for file in listdir(ClientsLogos):# check if client has logo
-                                    if file.rsplit('.',1)[0]==ThisProject_client:
-                                        self.ThisClientLogo=ClientsLogos+'\\'+file
-                                        proceed="Yes"
-                                        break
-                                else:
-                                    qm = QMessageBox
-                                    ret = qm.question(self,"Note: Client logo not found","Logo for Client: '" +ThisProject_client+"' was not found\n This can be added in the Admin \n Would you like to proceed without the logo?", qm.Yes | qm.No )
-                                    if ret == qm.Yes:
-                                        proceed="Yes"
-                                if proceed=="Yes":
-                                    doc=docx.Document(FeeProposalTemp) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
-                                    self.allSections= []
-                                    self.validSections=[]
-                                    for i in self.stageCheckDict: #for all checkboxes
-                                        if self.stageCheckDict[i]!='':  #if checkbox isn't a header  
-                                            self.allSections.append(i.text())  # add full text
-                                            if i.isChecked(): # if it's checked
-                                                self.validSections.append(i.text()) # add full text
-                                            for j in self.headerlist: 
-                                                if i.text()[:len(j.text())+1]==j.text()+" ":# if it's a stage
-                                                    self.allSections.append(j.text()) 
-                                                    self.allSections.append(i.text().replace(j.text()+" ",""))
-                                                    if i.isChecked():
-                                                        self.validSections.append(j.text())
-                                                        self.validSections.append(i.text().replace(j.text()+" ",""))
-                                                    break
-                                    self.allSections=list((dict.fromkeys(self.allSections)))
-                                    self.validSections=list((dict.fromkeys(self.validSections)))
-
-                                    for par in doc.paragraphs:
-                                        if 'PROJECTSERVICE' in par.text:
-                                            replaceRunInParagraph(par, 'PROJECTSERVICE', self.title)
-                                        if 'PROJECTNAME' in par.text:
-                                            replaceRunInParagraph(par, "PROJECTNAME", ThisProject_name)
-                                        if 'REPORTDATE' in par.text:
-                                            replaceRunInParagraph(par,'REPORTDATE', f"Date: {datetime.strptime(self.IssueDateEdit.text(),'%Y/%m/%d').strftime('%d/%m/%Y')}")
-                                        if 'CLIENTNAME' in par.text:
-                                            replaceRunInParagraph(par,'CLIENTNAME', ThisProject_client)
-                                        if 'CLIENTLOGO' in par.text and self.ThisClientLogo!="":
-                                            par.text =""
-                                            r=par.add_run()
-                                            try:
-                                                #Check logo size and resize if too big
-                                                img=Image.open(self.ThisClientLogo)
-                                                #Get the size in inches
-                                                width, height = img.size
-                                                width = width/96
-                                                height = height/96
-                                                print(width,height)
-                                                if width>3.5 or height>1.5:    
-                                                    #reduce size by 10% until it fits
-                                                    while width>3.5 or height>1.5:
-                                                        width=width*0.9
-                                                        height=height*0.9
-                                                        print(width,height)
-                                                    r.add_picture(self.ThisClientLogo,width=Inches(width), height=Inches(height))
-                                                else:
-                                                    r.add_picture(self.ThisClientLogo)
-                                            except ZeroDivisionError:
-                                                r.add_picture(self.ThisClientLogo,width=Inches(1.822835), height=Inches(0.9409449))
-                                            except docx.image.exceptions.UnrecognizedImageError:
-                                                MsgBox("The image file for the logo is not supported\nIt's possible that the size of the image is too big, try compressing this image",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-                                            
-                                        # if '[PROJECT AMOUNT]' in par.text:
-                                        #     inline = par.runs
-                                        #     for i in range(len(inline)):
-                                                # if '[PROJECT AMOUNT]' in inline[i].text:
-                                                #     text = inline[i].text.replace('[PROJECT AMOUNT]', self.ReportTitle.text())
-                                                #     inline[i].text = text
-                                        if '[SERVICE (stage inclusive)]' in par.text:
-                                            for serv in self.checkedlist:
-                                                newpar =par.insert_paragraph_before(serv.text() + ' - ## weeks')
-                                                newpar.alignment= 1
-                                            par.clear()
-                                        
-                                        for serv in self.allSections:
-                                            if (serv not in self.validSections) and '['+serv+']' == par.text:
-                                                cur_index = list(map(lambda x: x.text, doc.paragraphs)).index(par.text)
-                                                while True: 
-                                                    cur_par=doc.paragraphs[cur_index]
-                                                    p = cur_par._element
-                                                    p.getparent().remove(p)
-                                                    p._p = p._element = None
-                                                    if '[END]' == cur_par.text:
-                                                        break
-                                            elif '['+serv+']' == par.text or ('[END]' in par.text and par._element.getparent()!=None):
-                                                p = par._element
-                                                p.getparent().remove(p)
-                                                p._p = p._element = None
-                                    
-                                    #     elif par.text== "ProjectClient":
-                                    #         par.text=""
-                                    #         r= par.add_run()
-                                    #         #if there is logo in the DropLogoLabel the logo is added to the paragragh where you have Client
-                                    #         #The logo is set as the Tooltip of the image in the label( the tooltips has been set as the path to the logo)
-                                    #         if self.DropLogolabel.pixmap()!=None and self.DropLogolabel.toolTip()!='':
-                                    #             r.add_picture(self.DropLogolabel.toolTip(), width=Inches(1.822835), height=Inches(0.9409449))#the width and height is set
-                                    #     elif "ProjectClient" in par.text:
-                                    #         for run in par.runs:
-                                    #             if "ProjectClient"  in run.text:
-                                    #                 run.text= run.text.replace("ProjectClient",ThisProject_client)
-                                    #         # par.text= par.text.replace("ProjectClient",ThisProject_client)
-                                    #tables
-                                    for table in doc.tables:
-                                        if table.cell(0,0).text=='Type of building' and table.cell(0,1).text=='{BUILDING TYPE}':
-                                            if 'BREEAM' not in self.validSections:
-                                                table._element.getparent().remove(table._element)
-                                        elif table.cell(0,0).text=='Stage' and table.cell(0,1).text=='Fees':
-                                            rowno=2
-                                            for serv in self.checkedlist:
-                                                newrow = table.add_row()
-                                                table.cell(rowno, 0).text=serv.text() #Add stage in new row
-                                                table.cell(rowno, 1).text=self.stageCheckDict[serv].text() #Fee 
-                                                for i in table.row_cells(rowno): #align the row
-                                                    i.vertical_alignment=1
-                                                    for j in i.paragraphs: j.alignment=1
-                                                newrow.height= docx.shared.Cm(1.05) #set row height
-                                                rowno+=1
-                                            for row in range(len([i for i in table.rows])): #total row
-                                                if table.cell(row,0).text=='TOTAL':
-                                                    self.total=0
-                                                    for serv in self.checkedlist: self.total +=self.stageCheckDict[serv].value() 
-                                                    table.cell(row,1).text= '£'+str(self.total)+'0'
-                                                    table.cell(row,1).paragraphs[0].runs[0].font.bold=True
-                                                    for i in table.row_cells(row): #align the row
-                                                        i.vertical_alignment=1
-                                                        for j in i.paragraphs: j.alignment=1
-                                                    table.rows[-1]._tr.addnext(table.rows[row]._tr)
-                                                    break
-                                        elif table.cell(0,0).text=='Discipline' and table.cell(0,1).text=='Discipline':
-                                            tbl=table
-                                            for frame in self.frameworkCheckList:
-                                                if frame.isChecked():
-                                                    p=paragraph.Paragraph(tbl._tbl.getnext(),tbl._parent).insert_paragraph_before("\n") #add paragraph after table
-                                                    p_font=p.add_run(frame.text()).font
-                                                    p_font.name='Gill Sans Nova'
-                                                    p_font.size=Pt(9)
-                                                    p_font.italic=True
-                                                    p_font.color.rgb= RGBColor(0x44, 0x54, 0x6A)
-                                                    tbl=deepcopy(tbl._tbl)
-                                                    p._p.addnext(tbl)
-                                                    tbl=[tb  for tb in [t for t in doc.tables] if tb._tbl==tbl][0]
-                                            table._element.getparent().remove(table._element)
-
-                                    # #footer
-                                    for section in doc.sections:
-                                        for par in section.footer.paragraphs:
-                                            if "PROJECTNAME" in par.text:
-                                                replaceRunInParagraph(par,"PROJECTNAME", ThisProject_name)
-                                            if "PROJECTSERVICE" in par.text:
-                                                replaceRunInParagraph(par,"PROJECTSERVICE", self.title)
-                                    doc.save(ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+'.docx') # save the file
-                                    startfile(ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+'.docx')# open the file
-                                        
-                                    # #Go back to the main window after refreshing with new report
-                                    newfeesdialog.close()
-                                    widget.removeWidget(feesandfinanceswindow)
-                                    feesandfinanceswindow.__init__()
-                                    widget.addWidget(feesandfinanceswindow) 
-                                    widget.setCurrentWidget(feesandfinanceswindow)
-                                    msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
-                                    msg.exec_()
-                            else:
-                                MsgBox("The report name is too long\nReduce "+ str(len(self.ReportTitle.text())-(259 - len(ProjectFinanceFolder+'\\3 Fee Proposal\\.docx')) )+" characters",setWindowTitle="Error: Report Name too long", setIcon = QMessageBox.Critical)
-                        else:
-                            MsgBox("The path " +FeeProposalTemp+" was not found",setWindowTitle="Error: Template file missing", setIcon = QMessageBox.Critical)
-                    else:
-                        MsgBox("The path "+ ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+".docx already exists",setWindowTitle="Error: File already exists", setIcon = QMessageBox.Critical)
-                else:
-                    MsgBox("The path '"+ ProjectFinanceFolder+"\\3 Fee Proposal' can't be found\nThis is needed to store the report",setWindowTitle="Error: Fee Proposal folder missing", setIcon = QMessageBox.Critical)
-            else:
-                MsgBox("The report title cannot be empty and atleast a valid service must be checked",setWindowTitle="Can't proceed", setIcon = QMessageBox.Information)
-        
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            newfeesdialog.close()
 
 class DrawingsandSketchesWindow(QMainWindow):
     tableSelected=None
@@ -7789,6 +7180,2850 @@ class ConfirmCopyDrawing(QDialog):
                 MsgBox("The PROJECT ADMIN DATABASE was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class ReportsPresMemosWindow(QMainWindow):
+    def __init__(self):
+        try:
+            super().__init__()
+          #New Drawing/Sketch Button
+            self.NewReportsButton = QToolButton()
+            self.NewReportsButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            self.NewReportsButton.setText("New")
+            self.NewReportsButton.setIcon(QIcon(newaction_icon))
+            self.NewReportsButton.setStyleSheet("""QToolButton{border:0.5px;
+            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
+            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
+            # self.NewReportsButton.setGeometry(QRect(40, 63,70, 70))
+            self.NewReportsButton.setIconSize(QSize(75, 42))
+            menu=QMenu()
+            self.NewReportsButton.setMenu(menu)
+            self.NewReportsButton.setPopupMode(QToolButton.InstantPopup) #Set popup mode of the button drop down
+            self.reportsaction=menu.addAction("Report") # button drop down actions
+            self.presentationaction=menu.addAction("Presentation") # button drop down actions
+            self.memosaction=menu.addAction("Memo")
+            self.reportsaction.triggered.connect(self.NewReportsClicked)
+
+            # self.sketchaction.triggered.connect(self.NewSketchesClicked)
+
+          #Refresh button
+            self.RefreshButton = QToolButton()
+            self.RefreshButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            self.RefreshButton.setText(" Refresh ")
+            self.RefreshButton.setIcon(QIcon(refresh_icon))
+            self.RefreshButton.setStyleSheet("""QToolButton{border:0.5px;
+            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
+            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
+            self.RefreshButton.setIconSize(QSize(45, 35))
+            self.RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
+            QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
+          
+          #Help button
+            self.HelpButton = QToolButton()
+            # self.HelpButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            self.HelpButton.setText(" ? ")
+            # self.HelpButton.setIcon(QIcon(refresh_icon))
+            # self.HelpButton.setStyleSheet("""QToolButton{border:0.5px;
+            # border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
+            # background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
+            # self.HelpButton.setIconSize(QSize(45, 35))
+            self.HelpButton.clicked.connect(self.HelpClicked)#Connecting the button to its function when clicked
+
+          #Project Label
+            currentProjectLabel= QLabel("Reports, Presentations & Memos:    " +ThisProject_foldername)
+            currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
+            # currentProjectLabel.setGeometry(QRect(450, 70, 290,40))
+
+          #Reports Table
+            self.ReportsTable = QTableWidget(1,3)
+            # self.ReportsTable.setGeometry(QRect(10, 160, 620, 751))
+            #Drawings Table Headear
+            self.ReportsTable.setHorizontalHeaderLabels(["Reports Number","Reports Name",""])
+            self.Reports_search=QLineEdit()
+            self.Reports_search.setPlaceholderText("Search")
+            self.Reports_search.textChanged.connect(lambda: self.filter_search(self.ReportsTable,self.Reports_search))
+           
+          #Presentations Table
+            self.PresentationsTable = QTableWidget(1,1)
+            # self.PresentationsTable.itemSelectionChanged.connect(lambda: self.selection_changed())
+            # self.PresentationsTable.itemDoubleClicked.connect(lambda: self.openfile(self.PresentationsTable,'5 Presentations'))
+            # self.PresentationsTable.setGeometry(QRect(640, 160, 620, 751))
+    
+            self.PresentationsTable.setHorizontalHeaderLabels(["Presentations"])
+          #Memos Table
+            self.MemosTable = QTableWidget(1,1)
+            # self.MemosTable.itemSelectionChanged.connect(lambda: self.selection_changed())
+            # self.MemosTable.itemDoubleClicked.connect(lambda: self.openfile(self.MemosTable,'0 Sketches'))
+            # self.MemosTable.setGeometry(QRect(1270, 160, 620, 751))
+
+            self.MemosTable.setHorizontalHeaderLabels(["Memos"])
+
+           
+            global ReportSeqNoDict
+            ReportSeqNoDict = {}
+          #Get reports
+            if path.exists(Project_Database):
+                QShortcut(QKeySequence('Ctrl+R'),self).activated.connect(self.NewReportsClicked)
+                QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.ReportsTable))
+
+                self.ReportsTable.itemDoubleClicked.connect(lambda: self.openfile(self.ReportsTable))
+                self.ReportsTable.installEventFilter(self)
+
+                self.previousReportName=None
+                QShortcut(QKeySequence('F2'),self).activated.connect(lambda: self.renamefile(self.ReportsTable))
+                con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
+                conn = pyodbc_connect(con_string)
+                cursor =conn.cursor()            
+                cursor.execute("SELECT * FROM {}".format('Reports'))
+                data= cursor.fetchall()
+                self.ReportsTable.setRowCount(len(data))
+                for d in range(len(data)):
+                    self.ReportsTable.setItem(d,0, QTableWidgetItem(data[d].PreName))
+                    self.ReportsTable.setItem(d,1, QTableWidgetItem(data[d].PostName))
+                    #Populate Sequential no Dictionary 
+                    if data[d].Ref in ReportSeqNoDict:
+                        if int(data[d].SeqNo) > ReportSeqNoDict[data[d].Ref]:
+                            ReportSeqNoDict[data[d].Ref]= int(data[d].SeqNo)
+                    else:
+                        ReportSeqNoDict[data[d].Ref]= int(data[d].SeqNo)
+                cursor.close()
+                conn.close()
+                self.ReportsTable.cellChanged.connect(self.fileRenamed)
+            else:
+                self.ReportsTable.setRowCount(1)
+                self.ReportsTable.setItem(0, 0,QTableWidgetItem("No PROJECT ADMIN DATABASE found"))
+                self.NewReportsButton.setEnabled(False)
+                self.ReportsTable.item(0,0).setBackground(QColor("#EE1111"))
+                self.ReportsTable.horizontalHeader().setVisible(False)
+                self.MemosTable.setVisible(False)
+                self.PresentationsTable.setVisible(False)
+            #Table header expansion   
+            header = self.ReportsTable.horizontalHeader()       
+            header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+            colsizelist=[self.ReportsTable.horizontalHeader().sectionSize(0),self.ReportsTable.horizontalHeader().sectionSize(1),self.ReportsTable.horizontalHeader().sectionSize(2)]
+            self.ReportsTable.setSelectionBehavior(1)
+            #Table expansion
+            for i in range(3):
+                header.setSectionResizeMode(i, QHeaderView.Interactive)
+                self.ReportsTable.setColumnWidth(i,colsizelist[i]+60)
+            self.ReportsTable.setShowGrid(False)
+            self.ReportsTable.verticalHeader().setVisible(False)
+            
+
+          #Page formats
+            self.OptionsLayout=QGridLayout()
+            self.OptionsLayout.addWidget(self.NewReportsButton,0,0)
+            self.OptionsLayout.addWidget(self.RefreshButton,0,1)
+            self.OptionsLayout.addWidget(self.HelpButton,0,2)
+            self.OptionsLayout.setHorizontalSpacing(30)
+            TopLayout=QHBoxLayout()
+            TopLayout.addStretch(1)
+            TopLayout.addLayout(self.OptionsLayout)
+            TopLayout.addStretch(18)
+            TopLayout.addWidget(currentProjectLabel)
+            TopLayout.addStretch(30)
+            ReportsLayout=QVBoxLayout()
+            ReportsLayout.addWidget(self.Reports_search)
+            ReportsLayout.addWidget(self.ReportsTable)
+            PresentationsLayout=QVBoxLayout()
+            PresentationsLayout.addWidget(self.PresentationsTable)
+            MemosLayout=QVBoxLayout()
+            MemosLayout.addWidget(self.MemosTable)
+
+            MainLayout= QHBoxLayout()
+            MainLayout.addLayout(ReportsLayout)
+            MainLayout.addLayout(PresentationsLayout)
+            MainLayout.addLayout(MemosLayout)
+            FullLayout=QVBoxLayout()
+            FullLayout.addLayout(TopLayout)
+            FullLayout.addLayout(MainLayout) 
+
+            Page =QWidget()
+            Page.setLayout(FullLayout)
+            self.setCentralWidget(Page)
+            menuBar = self.menuBar()
+            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
+            backMenu= QAction(icon=QIcon(back_icon), parent= self)
+            menuBar.addAction(backMenu)
+            menuBar.addAction(homeMenu)
+            homeMenu.triggered.connect(self.homeAction)
+            backMenu.triggered.connect(self.backAction)
+            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
+
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            menuBar = self.menuBar()
+            icon = QIcon()
+            icon.addPixmap(QPixmap(home_icon))
+            homeMenu = QAction(icon=icon,parent= self.widget)
+            menuBar.addAction(homeMenu)
+            homeMenu.triggered.connect(self.homeAction)
+    
+    def eventFilter(self, source, event): 
+        try:
+            if event.type() == QEvent.ContextMenu and source in [self.ReportsTable]:
+                selectedrows = [i.row() for i in source.selectionModel().selectedRows(0) if (source.isRowHidden(i.row())==False)]
+                if len(selectedrows)>0:
+                    menu = QMenu(self)
+                    menu.addAction("Open", lambda: self.openfile(source))
+                    if len(selectedrows)==1:   menu.addAction("Rename", lambda: self.renamefile(source))
+                    menu.addAction("Delete", lambda: self.delete(source))
+                    menu.exec_(event.globalPos())
+                    return True
+            return super().eventFilter(source, event)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def filter_search(self, tableobj, editbox):
+        try:
+            if editbox.text()=='' or  (tableobj.item(0,0)!=None and tableobj.item(0,0).text()=="No PROJECT ADMIN DATABASE found"):
+                for i in range(tableobj.rowCount()): tableobj.setRowHidden(i,False)
+            else:
+                for i in range(tableobj.rowCount()): tableobj.setRowHidden(i,True)
+                for i in range(tableobj.rowCount()):
+                    for j in range(tableobj.columnCount()):
+                        if tableobj.item(i,j) !=None and editbox.text().lower() in tableobj.item(i,j).text().lower():
+                            tableobj.setRowHidden(i, False) 
+                            break
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def delete(self, tableobj):
+        try:
+            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
+            tableobj.clearSelection()
+            selection=QItemSelection()
+            for i in self.selectionindexes:
+                selection.select(tableobj.model().index(i,0),tableobj.model().index(i,2))
+            mode = QItemSelectionModel.Select | QItemSelectionModel.Rows
+            tableobj.selectionModel().select(selection, mode)
+            if len(self.selectionindexes):
+                qm=QMessageBox()
+                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete these " + str(len(self.selectionindexes)) + " item(s)?", qm.Yes | qm.No)
+                if ret == qm.Yes:
+                    if tableobj == self.ReportsTable:
+                        subfolderstr= '4 Reports'
+                        tbl='Reports'
+                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
+                    conn = pyodbc_connect(con_string)
+                    cursor =conn.cursor()            
+                    for i in self.selectionindexes:
+                        cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = '"+ str(tableobj.item(i, 0).text()) + "' AND PostName = '"+ str(tableobj.item(i, 1).text()) + "')")
+                        if path.exists(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx"):
+                            while True:
+                                try:
+                                    #Delete file 
+                                    remove(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx")
+                                    break
+                                except IOError:
+                                    #If there's error while opening the file, tell user to close the file to continue
+                                    MsgBox("Please make sure the "+ Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
+                        else:
+                            MsgBox(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    widget.removeWidget(reportswindow)
+                    reportswindow.__init__()
+                    widget.addWidget(reportswindow) 
+                    widget.setCurrentWidget(reportswindow)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def NewReportsClicked(self):
+        try:
+            global newreportdialog
+            newreportdialog=NewReport_Dialog()
+            newreportdialog.exec()
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def openfile(self, tableobj):
+        try:
+            if tableobj == self.ReportsTable:
+                subfolderstr= '4 Reports'
+
+            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
+            tableobj.clearSelection()
+            selection=QItemSelection()
+            for i in self.selectionindexes:
+                selection.select(tableobj.model().index(i,0),tableobj.model().index(i,2))
+            mode = QItemSelectionModel.Select | QItemSelectionModel.Rows
+            tableobj.selectionModel().select(selection, mode)
+            for i in self.selectionindexes:
+                if path.exists(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx"):
+                    Popen([ Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx"],shell=True)
+                else:
+                    MsgBox(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def renamefile(self, tableobj):
+        try:
+            if tableobj == self.ReportsTable:
+                selectedrows = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
+                if len(selectedrows)==1:
+                    row=selectedrows[0]
+                    #allow user to edit the cell
+                    #dynamically allow user to edit the cell
+                    # tableobj.setEditTriggers(QAbstractItemView.AllEditTriggers)
+                    self.previousReportName=tableobj.item(row,1).text()
+                    tableobj.editItem(tableobj.item(row,1))
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+   
+    def fileRenamed(self, row, col):
+        try:
+            reportRef=self.ReportsTable.item(row,0).text()
+            newReportName=self.ReportsTable.item(row,1).text()
+            if newReportName:
+                if newReportName!=self.previousReportName:
+                    oldfullpath=ProjectReportFolder+'\\'+reportRef+ " - "+self.previousReportName+".docx"
+                    newfullpath=ProjectReportFolder+'\\'+reportRef+ " - "+newReportName+".docx"
+                    #Update the database
+                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
+                    conn = pyodbc_connect(con_string)
+                    cursor =conn.cursor()   #Update the project details  
+                    values= (newReportName, reportRef+" - "+self.previousReportName)               
+                    cursor.execute("UPDATE Reports SET PostName= ? WHERE FullName= ?", values )
+                    conn.commit()#Save the changes
+                    cursor.close()
+                    conn.close()#Close cursor and connection
+                    #Rename the file and edit the file
+                    if path.exists(oldfullpath):
+                        while True:
+                            try:
+                                rename(oldfullpath, newfullpath)
+                                doc=docx.Document(newfullpath)
+                                for par in doc.paragraphs:
+                                    if self.previousReportName in par.text:
+                                        replaceRunInParagraph(par,self.previousReportName,newReportName)
+                                for table in doc.tables:
+                                    for row in table.rows:
+                                        for cell in row.cells:  
+                                            if cell.text=="Report Title":
+                                                row.cells[1].text=newReportName
+                                for section in doc.sections:
+                                    for par in section.footer.paragraphs:
+                                        if self.previousReportName in par.text:
+                                            replaceRunInParagraph(par,self.previousReportName,newReportName)
+                                doc.save(newfullpath)
+                                break
+                            except IOError:
+                                MsgBox("Please make sure the "+oldfullpath+" isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
+            else:
+                self.ReportsTable.item(row,1).setText(self.previousReportName)
+            self.previousReportName=None
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def RefreshClicked(self):
+        try:
+            widget.removeWidget(reportswindow)
+            reportswindow.__init__()
+            widget.addWidget(reportswindow)
+            widget.setCurrentWidget(reportswindow)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def HelpClicked(self):
+        try:
+            with open(help_json, 'r') as f:
+                self.data=json_load(f)
+            MsgBox(self.data["Reports Presentations and Memos"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+        
+    def backAction(self):
+        try:
+            widget.setCurrentWidget(projectwindow)
+            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def homeAction(self):
+        try:
+            widget.setCurrentWidget(initwindow)
+            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class NewReport_Dialog(QDialog):
+    def __init__(self):
+        try:
+            super(NewReport_Dialog,self).__init__()
+            # self.resize(500,500) #Window width and height
+          #Check if this project three-letter code has been set, and give error msg if not
+            if project3name_dict[ThisProject_foldername] =='XXX':
+                MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            
+          #Create Dropdowns and fill them
+            self.ReportTitleEdit= QLineEdit(self)
+            # self.ReportTitleEdit.setEditable(True)
+            self.TypeListBox= QComboBox(self)
+            self.TypeListBox.addItems(['Stage 2', 'Stage 3', 'Stage 4', 'CEAP Business case', 'Embodied carbon', 'Feasibility', 'Utilities', 'Site Visit Report', 'Other'])
+            # self.TypeListBox.setEditable(True)
+
+            self.RoleListBox= QComboBox(self)
+            for i in DrawNamingDict['Role']:
+                self.RoleListBox.addItem(i,DrawNamingDict['Role'][i])
+                
+            self.A3RadioBut= QRadioButton("A3")
+            self.A4RadioBut= QRadioButton("A4")
+            self.A4RadioBut.setChecked(True)
+            self.RadioButLayout=QHBoxLayout()
+            self.RadioButLayout.addWidget(self.A3RadioBut)
+            self.RadioButLayout.addWidget(self.A4RadioBut)
+            self.RadioButLayout.addStretch()
+          #Arrange the window layout
+            self.grid= QGridLayout()
+            #self.grid.addWidget(QLineEdit())
+            self.grid.addWidget(QLabel('Report Title:'), 0,0)
+            self.grid.addWidget(self.ReportTitleEdit, 0,1)
+            self.grid.addWidget(QLabel('Type:'), 1,0)
+            self.grid.addWidget(self.TypeListBox, 1,1)
+            self.grid.addWidget(QLabel('Role:'), 2,0)
+            self.grid.addWidget(self.RoleListBox, 2,1)
+            self.grid.addWidget(QLabel('Paper size:'), 3,0)
+            self.grid.addLayout(self.RadioButLayout, 3,1)
+
+            
+            self.grid.setVerticalSpacing(30) #spacing between the widgets
+            self.grid.setHorizontalSpacing(30)
+            self.gridGroupBox = QGroupBox()
+            self.gridGroupBox.setLayout(self.grid) 
+            
+            self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            
+            self.nameLayout= QHBoxLayout()
+            self.editNameButton= QPushButton("Edit Name")
+            
+            # self.nameBox = QLineEdit()
+            # self.nameBox.setEnabled(False)
+            
+            # self.nameLayout.addWidget(self.editNameButton)
+            # self.nameLayout.addWidget(self.nameBox)
+            
+            self.FullNameBox= QLineEdit()
+            self.FullNameBox.setEnabled(False)
+
+            mainLayout = QVBoxLayout()
+            # mainLayout.addWidget(self.DropLogolabel)
+            # mainLayout.addWidget(self.LogosList)
+            mainLayout.addWidget(self.gridGroupBox)
+            # mainLayout.addLayout(self.nameLayout)
+            mainLayout.addWidget(self.FullNameBox)
+            mainLayout.addWidget(self.buttonBox)
+            mainLayout.setSpacing(30)
+
+            # mainLayout.setGeometry(QRect(140, 210, 451, 351))
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            self.setLayout(mainLayout)
+            # self.setLayout(mainLayout)
+            self.setWindowTitle("New Report")
+                        
+            self.RoleListBox.currentIndexChanged.connect(self.RoleChanged)
+            self.RoleChanged(self.RoleListBox.currentIndex())
+            self.ReportTitleEdit.textChanged.connect(self.setNameBox)
+            
+            self.buttonBox.accepted.connect(self.funcOK)
+            self.buttonBox.rejected.connect(self.reject)
+            # self.editNameButton.clicked.connect(self.editNameButtonClicked)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            newreportdialog.close()
+
+    def RoleChanged(self, index):
+        try:
+            prev_type=self.TypeListBox.currentText()
+            self.TypeListBox.clear()
+            if self.RoleListBox.currentText()=='BREEAM':
+                self.TypeListBox.addItems(['Design Stage', 'Post Construction Stage', 'Other'])
+            else:
+                self.TypeListBox.addItems(['Stage 2', 'Stage 3', 'Stage 4', 'CEAP Business case', 'Embodied carbon', 'Feasibility', 'Utilities', 'Site Visit Report', 'Other'])
+            self.TypeListBox.setCurrentText(prev_type)
+            #set the report number without the last four digits(the seq no)
+            ribastage=RIBAstages[ThisProject_no+' - '+ ThisProject_name]
+            if ribastage=='': ribastage='XX'
+            self.prename = project3name_dict[ThisProject_foldername] + '-RCDC-'+ribastage+'-XX-RP-'+self.RoleListBox.currentData()
+            if self.prename in ReportSeqNoDict: #chech for the number in the report seqno dictionary
+                self.sequential_no = str(ReportSeqNoDict[self.prename]+1).zfill(4)
+            else:
+                self.sequential_no= '0001'
+            self.prename+='-'+self.sequential_no
+            self.setNameBox()
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def setNameBox(self):
+        try:
+            #set the fullname box with the full report name
+            self.FullNameBox.setText(self.prename + ' - '+str(self.ReportTitleEdit.text()))
+        # def ReportTitleChanged(self):
+        #     self.FullNameBox.setText(self.prename + ' - '+str(self.ReportTitleEdit.text()))
+        # def editNameButtonClicked(self):
+        #     self.nameBox.setEnabled(True)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def funcOK(self):
+        try:
+            if self.ReportTitleEdit.text()!= "":#If the title box isn't empty
+                if path.exists(Project_Database):
+                  #Add the new report into the project database if it is found and if the report folder for this project is found
+                    if path.exists(ProjectReportFolder):
+                        if path.exists(ProjectReportFolder+'\\'+self.FullNameBox.text()+'.docx')==False:
+                            if self.TypeListBox.currentText()=="Site Visit Report":
+                                self.ReportTemp=SiteVisitReportTemp
+                            # elif self.TypeListBox.currentText()=="Post Construction Stage":
+                            #     self.ReportTemp=BREEAMPostConstructionReportTemp
+                            else:
+                                if self.A3RadioBut.isChecked():
+                                    self.ReportTemp=A3ReportTemp
+                                else:
+                                    self.ReportTemp=A4ReportTemp
+                            if path.exists(self.ReportTemp):
+                                self.ThisClientLogo=""
+                                proceed=""
+                                for file in listdir(ClientsLogos):# check if client has logo
+                                    if file.rsplit('.',1)[0]==ThisProject_client:
+                                        self.ThisClientLogo=ClientsLogos+'\\'+file
+                                        proceed="Yes"
+                                        break
+                                else:
+                                    qm = QMessageBox
+                                    ret = qm.question(self,"Note: Client logo not found", "Logo for Client: '" +ThisProject_client+"' was not found\n This can be added in the Admin \n Would you like to proceed without the logo?", qm.Yes | qm.No )
+                                    if ret == qm.Yes:
+                                        proceed="Yes"
+                                if proceed=="Yes":
+                                    while True:
+                                        try:
+                                            # text.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+                                            doc=docx.Document(self.ReportTemp) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
+                                            break
+                                        except docx.opc.exceptions.PackageNotFoundError:
+                                            MsgBox("Please make sure '"+self.ReportTemp+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Template file open", setIcon = QMessageBox.Critical)
+
+                                    for par in doc.paragraphs:#Check for Report Title in the doc and replace with the title in the report title box
+                                        # if par.text=="[ReportTitle]":
+                                        #     par.add_run().font.size = Pt(48) #set font size
+                                        #     par.runs[0].text=self.ReportTitleEdit.text() #Replace text
+                                        # elif par.text=="[ProjectTitle]":##Similar to report title
+                                        #     par.add_run().font.size = Pt(24) 
+                                        #     par.runs[0].text=ThisProject_name
+                                        #     # par.text=ThisProject_name
+                                        # elif par.text=="[ProjectNo]":
+                                        #     par.add_run().font.size = Pt(24)
+                                        #     par.runs[0].text=ThisProject_no
+                                        # elif par.text=="[ReportDate]":
+                                        #     par.add_run().font.size = Pt(18) 
+                                        #     par.runs[0].text="Date: "+str(date.today().strftime("%d/%m/%y"))#set date in the formt
+                                        #     # par.runs[1].text=''
+                                        #     # par.runs[2].text=''
+                                        #     # par.text= "Date: "+str(date.today().strftime("%d/%m/%y"))
+                                        
+                                        if 'REPORTTITLE' in par.text:
+                                            replaceRunInParagraph(par,'REPORTTITLE',self.ReportTitleEdit.text())
+                                        elif 'PROJECTNAME' in par.text:
+                                            replaceRunInParagraph(par,'PROJECTNAME',ThisProject_name)
+                                        elif 'PROJECTNO' in par.text:
+                                            replaceRunInParagraph(par,'PROJECTNO',ThisProject_no)
+                                        elif 'REPORTDATE' in par.text:
+                                            replaceRunInParagraph(par,'REPORTDATE',f"Date: {str(date.today().strftime('%d/%m/%y'))}")
+                                        elif "CLIENTNAME" in par.text:
+                                            replaceRunInParagraph(par,'CLIENTNAME',ThisProject_client)
+                                        elif par.text== "CLIENTLOGO" and self.ThisClientLogo!="":
+                                            # pass
+                                            par.text =""
+                                            r=par.add_run()
+                                            try:
+                                                #Check logo size and resize if too big
+                                                img=Image.open(self.ThisClientLogo)
+                                                #Get the size in inches
+                                                width, height = img.size
+                                                width = width/96
+                                                height = height/96
+                                                # print(width,height)
+                                                if width>3.5 or height>1.5:    
+                                                    #reduce size by 10% until it fits
+                                                    while width>3.5 or height>1.5:
+                                                        width=width*0.9
+                                                        height=height*0.9
+                                                        # print(width,height)
+                                                    r.add_picture(self.ThisClientLogo,width=Inches(width), height=Inches(height))
+                                                else:
+                                                    r.add_picture(self.ThisClientLogo)
+                                            except ZeroDivisionError:
+                                                r.add_picture(self.ThisClientLogo,width=Inches(1.822835), height=Inches(0.9409449))
+                                            except docx.image.exceptions.UnrecognizedImageError:
+                                                MsgBox("The image file for the logo is not supported\nIt's possible that the size of the image is too big, try compressing this image",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                                        
+                                    #tables
+                                    for table in doc.tables:
+                                        for row in table.rows:
+                                            for cell in row.cells:  
+                                                if cell.text=="Project Title":
+                                                    row.cells[1].text=ThisProject_name
+                                                elif cell.text=="Project Number":
+                                                    row.cells[1].text=ThisProject_no
+                                                elif cell.text=="Report Title":
+                                                    row.cells[1].text=self.ReportTitleEdit.text()
+                                                elif cell.text=="Report Reference":
+                                                    row.cells[1].text=self.prename
+                                    #footer
+                                    # for foot in range(0, len(doc.sections)):
+                                    #     #In the footers replace all texts 'Report name' with the report name set
+                                    #     doc.sections[foot].footer.paragraphs[0].text =doc.sections[foot].footer.paragraphs[0].text.replace('Report name', self.ReportTitleEdit.text())
+                                    for section in doc.sections:
+                                        for par in section.footer.paragraphs:
+                                            if 'REPORTTITLE' in par.text:
+                                                replaceRunInParagraph(par,'REPORTTITLE',self.ReportTitleEdit.text())
+                                               
+                                        
+                                    doc.save(ProjectReportFolder+'\\'+self.FullNameBox.text()+'.docx') # save the file
+                                    
+                                    #Record into database
+                                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';' #Connect to the project database
+                                    conn = pyodbc_connect(con_string)
+                                    cursor =conn.cursor()                    
+                                    values = (
+                                        (replace_last(self.prename, '-'+self.sequential_no, ''), self.sequential_no, str(self.ReportTitleEdit.text()))
+                                    )
+                                    cursor.execute("INSERT INTO Reports (Ref, SeqNo, PostName) VALUES (?,?,?)", values)
+                                    conn.commit()
+                                    cursor.close()
+                                    conn.close()#Save changes and close cursor and connection
+
+                                    startfile(ProjectReportFolder+'\\'+self.FullNameBox.text()+'.docx')# open the file
+                                        
+                                    #Go back to the main window after refreshing with new project
+                                    newreportdialog.close()
+                                    widget.removeWidget(reportswindow)
+                                    reportswindow.__init__()
+                                    widget.addWidget(reportswindow) 
+                                    widget.setCurrentWidget(reportswindow)
+                                    msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
+                                    msg.exec_()
+                            else:
+                                MsgBox("The path " +self.ReportTemp+" was not found",setWindowTitle="Error: Template file missing", setIcon = QMessageBox.Critical)
+                        else:
+                            MsgBox("The path "+ ProjectReportFolder+'\\'+self.FullNameBox.text()+".docx already exists",setWindowTitle="Error: File already exists", setIcon = QMessageBox.Critical)
+                    else:
+                        MsgBox("The path " +ProjectReportFolder+" was not found",setWindowTitle="Error: Report folder missing", setIcon = QMessageBox.Critical)
+                else:
+                    MsgBox("This PROJECT ADMIN DATABASE was not found\Contact software programmer",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            else:
+                MsgBox("The report title cannot be empty",setWindowTitle="Can't proceed", setIcon = QMessageBox.Information)
+
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class SpecsWindow(QMainWindow):
+    def __init__(self):
+        try:
+            super().__init__()
+          #New Button
+            self.NewButton = QToolButton()
+            self.NewButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            self.NewButton.setText("New")
+            self.NewButton.setIcon(QIcon(newaction_icon))
+            self.NewButton.setStyleSheet("""QToolButton{border:0.5px;
+            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
+            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
+            # self.NewButton.setGeometry(QRect(40, 63,70, 70))
+            self.NewButton.setIconSize(QSize(75, 42))
+            menu=QMenu()
+            self.NewButton.setMenu(menu)
+            self.NewButton.setPopupMode(QToolButton.InstantPopup) #Set popup mode of the button drop down
+            self.specificationaction=menu.addAction("Specification") # button drop down actions
+            self.scheduleaction=menu.addAction("Schedule") # button drop down actions
+            self.specificationaction.triggered.connect(self.NewSpecsClicked)
+            self.scheduleaction.triggered.connect(self.NewScheduleClicked)
+
+          #Calcs Template Button
+            self.TemplatesButton = QToolButton()
+            self.TemplatesButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon) #
+            self.TemplatesButton.setText("Templates")
+            self.TemplatesButton.setIcon(QIcon(template_icon))
+            self.TemplatesButton.setStyleSheet("""QToolButton{border:0.5px;
+            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
+            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
+            self.TemplatesButton.setIconSize(QSize(75, 42))
+            menu=QMenu()
+            self.TemplatesButton.setMenu(menu)
+            self.TemplatesButton.setPopupMode(QToolButton.InstantPopup) #Set popup mode of the button drop down
+            # self.spectempaction=menu.addAction("Specification") # button drop down actions
+            self.scheduletempaction=menu.addAction("Schedule") # button drop down actions
+            self.scheduletempaction.triggered.connect(self.scheduletempClicked)
+            # self.TemplatesButton.setHidden(True)
+
+          #Refresh button
+            self.RefreshButton = QToolButton()
+            self.RefreshButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            self.RefreshButton.setText(" Refresh ")
+            self.RefreshButton.setIcon(QIcon(refresh_icon))
+            self.RefreshButton.setStyleSheet("""QToolButton{border:0.5px;
+            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
+            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
+            self.RefreshButton.setIconSize(QSize(45, 35))
+            self.RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
+            QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
+          
+          #Project Label
+            currentProjectLabel= QLabel("Specs & Schedules:    " +ThisProject_foldername)
+            currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
+            # currentProjectLabel.setGeometry(QRect(450, 70, 290,40))
+
+          #Specs Table
+            self.SpecsTable = QTableWidget(1,3)
+            # self.SpecsTable.setGeometry(QRect(10, 160, 620, 751))
+            #Drawings Table Headear
+            self.SpecsTable.setHorizontalHeaderLabels(["","Specs Number", "Specs Name"])
+            self.Specs_search=QLineEdit()
+            self.Specs_search.setPlaceholderText("Search")
+           
+          #Schedules Table
+            self.SchedulesTable = QTableWidget(1,3)
+            self.SchedulesTable.setHorizontalHeaderLabels(["","Schedule Number", "Schedule Name"])
+            #Inform user the table is not working yet
+            # self.SchedulesTable.setItem(0,0,QTableWidgetItem("This table is not working yet"))
+            # self.SchedulesTable.setColumnWidth(0, 600)
+            # self.SchedulesTable.item(0,0).setFlags(Qt.ItemIsEnabled)
+            self.Schedules_search=QLineEdit()
+            self.Schedules_search.setPlaceholderText("Search")
+           
+            global SpecsSeqNoDict, SchedulesSeqNoDict
+            SpecsSeqNoDict = {}
+            SchedulesSeqNoDict = {}
+          
+          #Get reports
+            if path.exists(Project_Database):
+                self.SpecsTable.itemDoubleClicked.connect(lambda: self.openfile(self.SpecsTable))
+                self.Specs_search.textChanged.connect(lambda: self.filter_search(self.SpecsTable,self.Specs_search))
+                self.SchedulesTable.itemDoubleClicked.connect(lambda: self.openfile(self.SchedulesTable))   
+                self.Schedules_search.textChanged.connect(lambda: self.filter_search(self.SchedulesTable,self.Schedules_search))
+
+                QShortcut(QKeySequence('Ctrl+N'),self).activated.connect(self.NewSpecsClicked)
+                QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.SpecsTable))
+                self.SpecsTable.installEventFilter(self)
+                self.SchedulesTable.installEventFilter(self)
+                con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
+                conn = pyodbc_connect(con_string)
+                cursor =conn.cursor() 
+                for table, val in {self.SpecsTable:['6 Specifications',SpecsSeqNoDict], self.SchedulesTable:['7 Schedules',SchedulesSeqNoDict]}.items():           
+                    if table==self.SpecsTable:
+                        cursor.execute("SELECT * FROM {}".format('Specs'))
+                    else:
+                        cursor.execute("SELECT * FROM {}".format('Schedules'))
+                    data= cursor.fetchall()
+                    StageDict={} #to store specs as key(stage):value(list of specs index(index from data)) pair e.g {'01':[0,5,1]}
+                    for d in range(len(data)): #Get all specs in Access and display (sorting them by stages)
+                        if data[d].PreName.split('-')[2] in StageDict: #if stage already in dictionary, add spec index as value list otherwise create add stage as key and add spec index as first in list
+                            StageDict[data[d].PreName.split('-')[2]].append(d)
+                        else:
+                            StageDict[data[d].PreName.split('-')[2]]= [d]
+                    table.setRowCount(len(data)+len(StageDict))
+                    rowno=0
+                    for stage in StageDict: #For each stage in StageDict
+                        table.setItem(rowno,0, QTableWidgetItem("Stage "+ stage))    
+                        table.setSpan(rowno,0,1,3) #Span the row to 3 columns
+                        font=QFont()
+                        font.setBold(True)
+                        table.item(rowno,0).setFont(font)
+                        table.item(rowno,0).setIcon(expanded_icon)
+                        table.item(rowno,0).setData(256,True) # true as in is it expanded
+                        stagerow= rowno
+                        rowno+=1
+                        for d in StageDict[stage]:   #Get specs based on index in StageDict Dictionary Value list
+                            table.setItem(rowno,1, QTableWidgetItem(data[d].PreName))
+                            table.setItem(rowno,2, QTableWidgetItem(data[d].PostName))
+                            if table==self.SpecsTable:
+                                filepath=ProjectSpecsFolder+"\\Stage "+data[d].PreName.split('-')[2]+"\\"+data[d].PreName+" - "+data[d].PostName+".docx"
+                                tooltiptext="This specification docx file is missing in its stage folder"
+                            else:
+                                filepath=ProjectSchedulesFolder+"\\Stage "+data[d].PreName.split('-')[2]+"\\"+data[d].PreName+" - "+data[d].PostName+".xlsx"
+                                tooltiptext="This schedule xlsx file is missing in the schedule folder"
+                            if path.exists(filepath)==False:
+                                for c in range(1,3):
+                                    table.item(rowno,c).setBackground(QColor("#FFE2E2"))
+                                    table.item(rowno,c).setToolTip(tooltiptext)
+                                    table.item(rowno,c).setForeground(QColor("#FF0000"))
+                                    table.item(rowno,c).setData(259,True) # true as in is it missing
+                            #Populate Sequential no Dictionary 
+                            if data[d].Ref in val[1]:
+                                if int(data[d].SeqNo) > val[1][data[d].Ref]:
+                                    val[1][data[d].Ref]= int(data[d].SeqNo)
+                            else:
+                                val[1][data[d].Ref]= int(data[d].SeqNo)
+                            rowno+=1
+                            table.selectRow(stagerow)
+                        # self.openfile(self.SpecsTable)#fold stages
+                    header = table.horizontalHeader()       
+                    table.setSelectionBehavior(1)
+                    for i in range(2):
+                        header.setSectionResizeMode(i, QHeaderView.Interactive)
+                    # self.SpecsTable.setColumnWidth(i,colsizelist[i]+60)
+                    table.setColumnWidth(0,80)
+                    table.setColumnWidth(1,260)
+                    table.setColumnWidth(2,420)
+                    table.setStyleSheet("""QHeaderView{background : transparent;}QHeaderView::section{font-family: "Microsoft YaHei"; color: #8999ba; text-align:left; background: #e4e6ed; min-height: 49px; max-height:49px;
+                    margin-left:0px;padding-left: 0px;} QTableWidget{background: #FFFFFF; border:1px; border-style:outset; font-family:"Microsoft YaHei"; } QTableWidget::item::selected{color:rgba(0,0,0,0.7); background:#ecfcf8; font:bold; border-top: 1px solid rgba(255,255,255,0.9); border-bottom: 1px solid rgba(255,255,255,0.9); }""")
+                    #selection blue ecf4fd breen ecfcf8
+                    table.setShowGrid(False)
+                    table.verticalHeader().setVisible(False)
+                    table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeToContents)
+                cursor.close()
+                conn.close()
+            else:
+                self.SpecsTable.setRowCount(1)
+                self.SpecsTable.setItem(0, 0,QTableWidgetItem("No PROJECT ADMIN DATABASE found"))
+                self.SpecsTable.setColumnHidden(1,True)
+                self.SpecsTable.setColumnHidden(2,True)
+                self.SpecsTable.setColumnHidden(3,True)
+                self.SpecsTable.item(0,0).setBackground(QColor("#EE1111"))
+                self.NewButton.setEnabled(False)
+                self.SpecsTable.horizontalHeader().setVisible(False)
+                self.SchedulesTable.setVisible(False)
+                self.Specs_search.setVisible(False)
+                self.Schedules_search.setVisible(False)
+                for table in [self.SpecsTable, self.SchedulesTable]:
+                    #Table header expansion   
+                    header = table.horizontalHeader()       
+                    header.setSectionResizeMode(0,QHeaderView.ResizeToContents)
+
+          #Page formats
+            self.OptionsLayout=QGridLayout()
+            self.OptionsLayout.addWidget(self.NewButton,0,0)
+            self.OptionsLayout.addWidget(self.TemplatesButton,0,1)
+            self.OptionsLayout.addWidget(self.RefreshButton,0,2)
+            # self.OptionsLayout.addWidget(self.HelpButton,0,2)
+            self.OptionsLayout.setHorizontalSpacing(30)
+            TopLayout=QHBoxLayout()
+            TopLayout.addStretch(1)
+            TopLayout.addLayout(self.OptionsLayout)
+            TopLayout.addStretch(18)
+            TopLayout.addWidget(currentProjectLabel)
+            TopLayout.addStretch(30)
+            SpecsLayout=QVBoxLayout()
+            SpecsLayout.addWidget(self.Specs_search)
+            SpecsLayout.addWidget(self.SpecsTable)
+            SchedulesLayout=QVBoxLayout()
+            SchedulesLayout.addWidget(self.Schedules_search)
+            SchedulesLayout.addWidget(self.SchedulesTable)
+
+            MainLayout= QHBoxLayout()
+            MainLayout.addLayout(SpecsLayout)
+            MainLayout.addLayout(SchedulesLayout)
+            FullLayout=QVBoxLayout()
+            FullLayout.addLayout(TopLayout)
+            FullLayout.addLayout(MainLayout) 
+
+            Page =QWidget()
+            Page.setLayout(FullLayout)
+            self.setCentralWidget(Page)
+            menuBar = self.menuBar()
+            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
+            backMenu= QAction(icon=QIcon(back_icon), parent= self)
+            menuBar.addAction(backMenu)
+            menuBar.addAction(homeMenu)
+            homeMenu.triggered.connect(self.homeAction)
+            backMenu.triggered.connect(self.backAction)
+            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            menuBar = self.menuBar()
+            icon = QIcon()
+            icon.addPixmap(QPixmap(home_icon))
+            homeMenu = QAction(icon=icon,parent= self.widget)
+            menuBar.addAction(homeMenu)
+            homeMenu.triggered.connect(self.homeAction)
+    
+    def eventFilter(self, source, event): 
+        try:
+            if event.type() == QEvent.ContextMenu and source in [self.SpecsTable, self.SchedulesTable]:
+                if len(source.selectionModel().selectedRows())>0:
+                    menu = QMenu(self)
+                    menu.addAction("Open", lambda: self.openfile(source))
+                    menu.addAction("Delete", lambda: self.delete(source))
+                    menu.exec_(event.globalPos())
+                    return True
+            return super().eventFilter(source, event)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def filter_search(self, tableobj, editbox):
+        try:
+            if editbox.text()=='' or  (tableobj.item(0,0)!=None and tableobj.item(0,0).text()=="No PROJECT ADMIN DATABASE found"):
+                for i in range(tableobj.rowCount()): tableobj.setRowHidden(i,False)
+            else:
+                for i in range(tableobj.rowCount()): tableobj.setRowHidden(i,True)
+                for i in range(tableobj.rowCount()):
+                    for j in range(tableobj.columnCount()):
+                        if tableobj.item(i,j) !=None and editbox.text().lower() in tableobj.item(i,j).text().lower():
+                            tableobj.setRowHidden(i, False) 
+                            break
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def delete(self, tableobj):
+        try:
+            selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if (tableobj.isRowHidden(i.row())==False) and (tableobj.columnSpan(i.row(),1) <= 1)]
+            
+            # selectionindexes = [i for i in selectionindexes if tableobj.columnSpan(i,1) <= 1] #Remove any one that isn't file
+
+            if len(selectionindexes):
+                qm=QMessageBox()
+                if tableobj == self.SpecsTable:
+                    subfolderstr= ProjectSpecsFolder
+                    tbl='Specs'
+                elif tableobj == self.SchedulesTable:
+                    subfolderstr= ProjectSchedulesFolder
+                    tbl='Schedules'
+                ret = qm.question(self,"Delete selected "+ tbl, "Are you sure you want to delete these " + str(len(selectionindexes)) + " "+tbl + "?", qm.Yes | qm.No)
+                if ret == qm.Yes:
+                    
+                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
+                    conn = pyodbc_connect(con_string)
+                    cursor =conn.cursor()            
+                    for i in selectionindexes:
+                        if tableobj == self.SpecsTable:
+                            toDelete= 'Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".docx"
+                        elif tableobj == self.SchedulesTable:
+                            toDelete= 'Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".xlsx"
+                        cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = '"+ str(tableobj.item(i, 1).text()) + "' AND PostName = '"+ str(tableobj.item(i, 2).text()) + "')")
+                        if path.exists(subfolderstr+'\\'+toDelete):
+                            while True:
+                                try:
+                                    #Delete file 
+                                    remove(subfolderstr+'\\'+toDelete)
+                                    break
+                                except IOError:
+                                    #If there's error while opening the file, tell user to close the file to continue
+                                    MsgBox("Please make sure the "+ subfolderstr+'\\'+toDelete+" isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
+                        else:
+                            MsgBox(subfolderstr+'\\'+toDelete+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                    widget.removeWidget(specswindow)
+                    specswindow.__init__()
+                    widget.addWidget(specswindow) 
+                    widget.setCurrentWidget(specswindow)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def NewSpecsClicked(self):
+        try:
+            global newspecsdialog
+            newspecsdialog=NewSpecs_Dialog()
+            newspecsdialog.exec()
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def NewScheduleClicked(self):
+        try:
+            global newschedulesdialog
+            newschedulesdialog=NewSchedules_Dialog()
+            newschedulesdialog.exec()
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def scheduletempClicked(self):
+        try:
+           #Call background class and Show background page
+            global schedulestempdialog
+            schedulestempdialog=SchedulesTemplates_Dialog()
+            schedulestempdialog.exec()
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def openfile(self, tableobj):
+        try:
+            # if tableobj == self.SpecsTable:
+                # subfolderstr= '6 Specifications'
+
+            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0)]
+            
+            if len(self.selectionindexes)==1 and tableobj.columnSpan(self.selectionindexes[0],1)>2: 
+                # datacol= 0 
+                
+                if tableobj.item(self.selectionindexes[0],0).data(256)==True: # if it is expanded
+                    tableobj.item(self.selectionindexes[0],0).setIcon(folded_icon) # change icon to folded
+                    tableobj.item(self.selectionindexes[0],0).setData(256,False)  # change expanded boolean parameter to false
+                    fold=True                      # set variable fold to True(more like an instruction i.e Fold this part )
+                else:
+                    tableobj.item(self.selectionindexes[0],0).setIcon(expanded_icon)
+                    tableobj.item(self.selectionindexes[0],0).setData(256,True)
+                    fold=False
+                for d in range(self.selectionindexes[0]+1,tableobj.rowCount()): #from row after clicked row till the end
+                    if tableobj.item(d,1)==None:
+                        break
+                    else:
+                        tableobj.setRowHidden(d,fold)       
+
+            #if user is attempting to open file
+            else:
+                for i in self.selectionindexes:
+                    if tableobj.columnSpan(i,1)==1:
+                        #open file in stage folder
+                        if tableobj == self.SpecsTable:
+                            self.toOpen= ProjectSpecsFolder+'\\Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".docx"
+                        elif tableobj == self.SchedulesTable:
+                            self.toOpen=ProjectSchedulesFolder+'\\Stage '+ tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".xlsx"
+                        if path.exists(self.toOpen):
+                            startfile(self.toOpen)
+                            #Popen([self.toOpen],shell=True)
+                        else:
+                            MsgBox(self.toOpen+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def RefreshClicked(self):
+        try:
+            widget.removeWidget(specswindow)
+            specswindow.__init__()
+            widget.addWidget(specswindow)
+            widget.setCurrentWidget(specswindow)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def backAction(self):
+        try:
+            widget.setCurrentWidget(projectwindow)
+            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def homeAction(self):
+        try:
+            widget.setCurrentWidget(initwindow)
+            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class NewSpecs_Dialog(QDialog):
+    def __init__(self):
+        try:
+            super(NewSpecs_Dialog,self).__init__()
+            # self.resize(500,500) #Window width and height
+          #Check if this project three-letter code has been set, and give error msg if not
+            if project3name_dict[ThisProject_foldername] =='XXX':
+                MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+          
+          #Create Dropdowns and fill them
+            self.StageBox= QComboBox(self)
+            self.StageBox.addItems(['Stage 02','Stage 03','Stage 04'])
+            self.StageBox.setCurrentText('Stage 04')
+
+
+            self.TypeVLayout= QVBoxLayout()
+            self.TypesList= []
+            for type in ['MEP Preliminaries', 'MEP Project Specifics', 'MEP Project Specific Materials and Workmanship', 'MEP Strip Out Specification', 'Sustainability Specification']:
+                checkbox= QCheckBox(type)
+                self.TypesList.append(checkbox)
+                self.TypeVLayout.addWidget(checkbox)
+
+
+            self.TypeGroupBox= QGroupBox()
+            self.TypeGroupBox.setTitle('Spec. Type')
+            self.TypeGroupBox.setLayout(self.TypeVLayout)
+            
+            
+
+          #Arrange the window layout
+            self.grid= QGridLayout()
+            #self.grid.addWidget(QLineEdit())
+            self.grid.addWidget(QLabel('Type:'), 0,0)
+            self.grid.addWidget(self.StageBox, 0,1)
+            self.grid.addWidget(self.TypeGroupBox, 1,0,1,2)
+
+            self.grid.setVerticalSpacing(30) #spacing between the widgets
+            self.grid.setHorizontalSpacing(30)
+            self.gridGroupBox = QGroupBox()
+            self.gridGroupBox.setLayout(self.grid) 
+            
+            self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            
+            mainLayout = QVBoxLayout()
+            mainLayout.addWidget(self.gridGroupBox)
+            mainLayout.addWidget(self.buttonBox)
+            mainLayout.setSpacing(30)
+
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            self.setLayout(mainLayout)
+            self.setWindowTitle("New Specification")
+                                    
+            self.buttonBox.accepted.connect(self.funcOK)
+            self.buttonBox.rejected.connect(self.reject)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            newreportdialog.close()
+
+    def getRef(self, type):
+        try:
+            if type in ['MEP Preliminaries', 'MEP Project Specifics', 'MEP Project Specific Materials and Workmanship', 'MEP Strip Out Specification']:
+                type_code='MEP'
+            elif type in ['Sustainability Specification']:
+                type_code='SU'
+            else:
+                type_code='XX'
+            prename=project3name_dict[ThisProject_foldername] +'-RCDC-'+self.StageBox.currentText().replace("Stage ","")+'-XX-SP-'+type_code
+            #Check if this name already exists
+            if prename in SpecsSeqNoDict: #If it does, add 1 to the sequence number
+                count= SpecsSeqNoDict[prename]+1
+            else: #If it doesn't, start the sequence number from 1
+                count= 1
+            #check file doesn't exist
+            while path.exists(ProjectSpecsFolder+"\\"+self.StageBox.currentText()+"\\"+prename+'-'+str(count).zfill(4)+' - '+type+'.docx'):
+                count+=1
+            
+            return prename+'-'+str(count).zfill(4)
+            
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)          
+
+    def funcOK(self):
+        try:
+            #Check if any type is selected
+            checked_types= [i.text() for i in self.TypesList if i.isChecked()]
+            if checked_types==[]:
+                MsgBox("Please select at least one type",setWindowTitle="    ", setIcon = QMessageBox.Information)
+                return
+            global SpecsSeqNoDict #used to update sequence of each newly added spec 
+
+            if path.exists(Project_Database):
+                #Add the new specs into the project database if it is found and if the specs folder for this project is found
+                if path.exists(ProjectSpecsFolder):
+                    #Check if specs template folder exists for this stage
+                    if path.exists(SpecsTempFolder+'\\'+self.StageBox.currentText()):
+                        #Check if templates for selected  stage and types exist
+                        for typ in [i.text() for i in self.TypesList if i.isChecked()]:
+                            if not path.exists(SpecsTempFolder+'\\'+self.StageBox.currentText()+'\\'+self.StageBox.currentText()+' '+typ+'.docx'):
+                                MsgBox("Template '"+self.StageBox.currentText()+" "+typ+".docx' was not found\n\nIt may be that this template doesn't exist yet. Please use the Stage 4 template instead",setWindowTitle="    ", setIcon = QMessageBox.Information)
+                                break
+                        else:
+                            #Ensure there is a stage folder in this project for selected stage
+                            if not path.exists(ProjectSpecsFolder+'\\'+self.StageBox.currentText()):
+                                mkdir(ProjectSpecsFolder+'\\'+self.StageBox.currentText())
+                                # mkdir(ProjectSpecsFolder+'\\'+self.StageBox.currentText()+'\\SS')
+
+                            #Check if client logo exists
+                            self.ThisClientLogo=""
+                            proceed=""
+                            for file in listdir(ClientsLogos):# check if client has logo
+                                if file.rsplit('.',1)[0]==ThisProject_client:
+                                    self.ThisClientLogo=ClientsLogos+'\\'+file
+                                    proceed="Yes"
+                                    break
+                            else:
+                                qm = QMessageBox
+                                ret = qm.question(self,"Note: Client logo not found", "Logo for Client: '" +ThisProject_client+"' was not found\n This can be added in the Admin \n Would you like to proceed without the logo?", qm.Yes | qm.No )
+                                if ret == qm.Yes:
+                                    proceed="Yes"
+                            if proceed=="Yes":
+                                for typ in [i.text() for i in self.TypesList if i.isChecked()]:
+                                    specsRef=self.getRef(typ)
+                                    self.template= SpecsTempFolder+'\\'+self.StageBox.currentText()+'\\'+self.StageBox.currentText()+' '+typ+'.docx'
+                                    #ensure template is not open
+                                    while True:
+                                        try:
+                                            # text.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+                                            doc=docx.Document(self.template) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
+                                            for par in doc.paragraphs:#Check for Report Title in the doc and replace with the title in the report title box
+                                                if "REPORTTITLE" in par.text:
+                                                    replaceRunInParagraph(par, "REPORTTITLE", typ)
+                                                elif "PROJECTNAME" in par.text:##Similar to report title
+                                                    replaceRunInParagraph(par, "PROJECTNAME", ThisProject_name)
+                                                elif "REPORTDATE" in par.text:
+                                                    replaceRunInParagraph(par, "REPORTDATE", f"Date: {date.today().strftime('%d/%m/%y')}")
+                                                elif "CLIENTNAME" in par.text:
+                                                    replaceRunInParagraph(par, "CLIENTNAME", ThisProject_client)
+                                                elif "REPORTREFERENCE" in par.text:
+                                                    replaceRunInParagraph(par, "REPORTREFERENCE", specsRef)
+                                                elif par.text== "CLIENTLOGO" and self.ThisClientLogo!="":
+                                                    # pass
+                                                    par.text =""
+                                                    r=par.add_run()
+                                                    try:
+                                                        r.add_picture(self.ThisClientLogo)
+                                                    except ZeroDivisionError:
+                                                        r.add_picture(self.ThisClientLogo,width=Inches(1.822835), height=Inches(0.9409449))  #, width=Inches(1.822835), height=Inches(0.9409449))#the width and height is set
+                                            
+                                            #tables
+                                            for table in doc.tables:
+                                                for row in table.rows:
+                                                    for cell in row.cells:  
+                                                        if cell.text=="Project Title":
+                                                            row.cells[1].text=ThisProject_name
+                                                        elif cell.text=="Project Number":
+                                                            row.cells[1].text=ThisProject_no
+                                                        elif cell.text=="Report Title":
+                                                            row.cells[1].text=typ
+                                                        elif cell.text=="Report Reference":
+                                                            row.cells[1].text=specsRef
+                                            #footer
+                                            for section in doc.sections:
+                                                for par in section.footer.paragraphs:
+                                                    if 'PROJECTNAME' in par.text:
+                                                        replaceRunInParagraph(par,'PROJECTNAME',ThisProject_name)
+                                               
+                                            filename=ProjectSpecsFolder+"\\"+self.StageBox.currentText()+"\\"+specsRef+' - ' +typ+'.docx'
+                                            doc.save(filename) # save the file
+                                            #Record into database
+                                            con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';' #Connect to the project database
+                                            conn = pyodbc_connect(con_string)
+                                            cursor =conn.cursor()                    
+                                            values = (
+                                                (specsRef[:-5], specsRef[-4:], typ)
+                                            )
+                                            cursor.execute("INSERT INTO Specs (Ref, SeqNo, PostName) VALUES (?,?,?)", values)
+                                            conn.commit()
+                                            cursor.close()
+                                            conn.close()#Save changes and close cursor and connection
+
+                                            SpecsSeqNoDict[specsRef[:-5]]=int(specsRef[-4:]) #Add the new spec to the dictionary
+
+                                            #Open the file
+                                            startfile(filename)# open the file
+                                            break
+
+                                        except docx.opc.exceptions.PackageNotFoundError:
+                                            MsgBox("Please make sure '"+self.template+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Template file open", setIcon = QMessageBox.Critical)
+                                #Go back to the main window after refreshing with new project
+                                newspecsdialog.close()
+                                widget.removeWidget(specswindow)
+                                specswindow.__init__()
+                                widget.addWidget(specswindow) 
+                                widget.setCurrentWidget(specswindow)
+                                msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
+                                msg.exec_()
+                    else:
+                        MsgBox("The path '" +SpecsTempFolder+'\\'+self.StageBox.currentText()+"' was not found",setWindowTitle="Error: Template folder missing", setIcon = QMessageBox.Critical)
+                else:
+                    MsgBox("The path " +ProjectSpecsFolder+" was not found",setWindowTitle="Error: This project's specs folder missing", setIcon = QMessageBox.Critical)
+            else:
+                MsgBox("This PROJECT ADMIN DATABASE was not found\Contact software programmer",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class SchedulesTemplates_Dialog(QDialog):
+    def __init__(self):
+        try:
+            super().__init__()
+            # self.setMaximumSize(500,600)
+            self.resize(700, 800)
+            #New calc template button
+            self.NewScheduleTemplate =QToolButton()
+            self.NewScheduleTemplate.setText("New")
+            self.NewScheduleTemplate.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            self.NewScheduleTemplate.setIcon(QIcon(new_icon))
+            self.NewScheduleTemplate.setStyleSheet("""QToolButton{border:0.5px;
+            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
+            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
+            # self.Backgrounds.setGeometry(QRect(40, 63,170, 70))
+            self.NewScheduleTemplate.setIconSize(QSize(60, 40))
+            self.NewScheduleTemplate.clicked.connect(self.NewScheduleTemplateClicked)
+
+           #get templates list from calcs template folder
+            self.TemplatesList= QListWidget()
+            if path.exists(SchedulesTempFolder): #Check if the path exists
+                if path.exists(SchedulesTempFolder+"\\data.json"): #Check if the data.json file exists  
+                    with open(SchedulesTempFolder+"\\data.json", 'r') as f:
+                        data=json_load(f)
+                    data=data["Disciplines"] if "Disciplines" in data else {}
+                    for discipline, attr in data.items():
+                        for schedule in attr["Schedules"]:
+                            if path.exists(SchedulesTempFolder+"\\"+schedule+".xlsx"): #Check if the schedule template exists
+                                self.TemplatesList.addItem(schedule) #Add template to the list
+                                self.TemplatesList.item(self.TemplatesList.count()-1).setData(256,schedule+".xlsx") #Add the full name of the template to the list item
+                                self.TemplatesList.item(self.TemplatesList.count()-1).setData(257,discipline) #Add the discipline of the template to the list item
+                    self.TemplatesList.itemDoubleClicked.connect(lambda: self.openfile(self.TemplatesList))
+                    QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.TemplatesList))
+                    self.TemplatesList.installEventFilter(self)
+
+                    # for files in listdir(SchedulesTempFolder):
+                    #     if files[-5:]=='.xlsx':
+                    #         self.TemplatesList.addItem(files[:-5]) #Add template to the list without the .xls at the end
+                    #         self.TemplatesList.item(self.TemplatesList.count()-1).setData(256,files) #Add the full name of the template to the list item
+                else:
+                    MsgBox("No data.json file found in the schedules tempalates folder\n\nContact software programmer",setWindowTitle="Error", setIcon = QMessageBox.Information)
+                    # self.TemplatesList.addItem("data.json file not found") # if data.json file doesn't exist, display message
+            else:
+                self.TemplatesList.addItem("Path '"+SchedulesTempFolder +" not found") # if folder doesn't exist, display message
+                self.NewScheduleTemplate.setEnabled(False)
+            self.TemplatesList.setSelectionMode(QAbstractItemView.ExtendedSelection) # allow multiple selection in the list
+
+            #page layout
+            self.OptionsLayout=QHBoxLayout()
+            self.OptionsLayout.addStretch(1)
+            self.OptionsLayout.addWidget(self.NewScheduleTemplate)
+            self.OptionsLayout.addStretch(55)
+            FullLayout=QVBoxLayout()
+            FullLayout.addLayout(self.OptionsLayout)
+            FullLayout.addWidget(self.TemplatesList) 
+
+            self.setLayout(FullLayout)
+            self.setWindowTitle("Schedules Templates")
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            drawingbackgrounddialog.close()
+    
+    def eventFilter(self, source, event): 
+        try:
+            # when you right click on the item in the list, show options --Delete and Open
+            if event.type() == QEvent.ContextMenu and source in [self.TemplatesList]:
+                if len(source.selectionModel().selectedRows())>0:
+                    menu = QMenu()
+                    menu.addAction("Open",lambda: self.openfile(source))
+                    menu.addAction("Delete",lambda: self.delete(source))
+                    menu.exec_(event.globalPos())
+
+                    return True
+            return super().eventFilter(source, event)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def delete(self, tableobj):
+        try:
+            # Delete selected items if they are found
+            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0)]
+            if len(self.selectionindexes):
+                qm=QMessageBox()
+                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete these " + str(len(self.selectionindexes)) + " template(s)?", qm.Yes | qm.No)
+                if ret == qm.Yes:
+                    #get json
+                    for i in self.selectionindexes:
+                        if path.exists(SchedulesTempFolder+'\\'+tableobj.item(i).data(256)):
+                            while True:
+                                try:
+                                    #Delete file
+                                    remove(SchedulesTempFolder+'\\'+tableobj.item(i).data(256))
+                                    break
+                                except IOError:
+                                    #If there's error while opening the file, tell user to close the file to continue
+                                    MsgBox("Please make sure '"+ SchedulesTempFolder+'\\'+tableobj.item(i).data(256)+"' isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
+                        else:
+                            MsgBox(SchedulesTempFolder+'\\'+tableobj.item(i).data(256)+" was not found",setWindowTitle= "Error", setIcon = QMessageBox.Critical)
+                    with open(SchedulesTempFolder+"\\data.json", 'r+') as f:
+                        data=json_load(f)
+                        for i in self.selectionindexes:
+                            data["Disciplines"][tableobj.item(i).data(257)]["Schedules"].pop(tableobj.item(i).text(), None)
+                        f.seek(0) # rewind to beginning of file
+                        json_dump(data, f, indent = 2)
+                        f.truncate() # remove remaining part
+                    #refresh the page
+                    global schedulestempdialog
+                    schedulestempdialog.close()
+                    schedulestempdialog=SchedulesTemplates_Dialog()
+                    schedulestempdialog.show()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def openfile(self, tableobj):
+        try:
+            #Open selected files
+            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0)]
+            for i in self.selectionindexes:
+                if path.exists(SchedulesTempFolder+'\\'+tableobj.item(i).data(256)):
+                    Popen([SchedulesTempFolder+'\\'+tableobj.item(i).data(256)],shell=True)
+                else:
+                    MsgBox(SchedulesTempFolder+'\\'+tableobj.item(i).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def NewScheduleTemplateClicked(self):
+        try:
+            return
+            def createTemplate():
+                if templateNameEdit.text()!='':
+                    if path.exists(SchedulesTempFolder+'\\'+templateNameEdit.text()+'.xlsx')==False:
+                        # schedulesGeneralTemp=SchedulesTempFolder+'\\'+'General schedule.xlsx'
+                        # if path.exists(schedulesGeneralTemp):
+                            # copyfile(schedulesGeneralTemp,SchedulesTempFolder+'\\'+templateNameEdit.text()+'.xlsx')
+                            with open(SchedulesTempFolder+"\\data.json", 'r+') as f:
+                                data=json_load(f)
+                                data["Disciplines"][serviceBox.currentText()]["Schedules"][templateNameEdit.text()]= {"Type":[stageBox.currentText()]}
+                                f.seek(0) # rewind to beginning of file
+                                json_dump(data, f, indent = 4)
+                                f.truncate() # remove remaining part
+
+                            dialog.close()
+                            msg= TimerMsgBox("Created        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)       
+                            msg.exec_()
+                            global schedulestempdialog
+                            schedulestempdialog.close()
+                            schedulestempdialog=SchedulesTemplates_Dialog()
+                            schedulestempdialog.exec_()
+
+                        # else:
+
+                        #     MsgBox("General schedule template was not found\n\n'"+schedulesGeneralTemp+"'",setWindowTitle=" File missing", setIcon = QMessageBox.Critical)
+                    else:
+                        MsgBox("Template already exists\n\n'"+templateNameEdit.text()+"' already exists",setWindowTitle=" ", setIcon = QMessageBox.Information)
+                else:
+                    MsgBox("Please fill all boxes", setWindowTitle="      ", setIcon = QMessageBox.Information)
+            
+            #Get Schedules templates data.json (needed to get services)
+            if path.exists(SchedulesTempFolder+"\\data.json"):  
+                self.schedulesData={}            
+                with open(SchedulesTempFolder+"\\data.json", 'r') as f:
+                    self.data=json_load(f)
+                if "Disciplines" in self.data:
+                    templateNameEdit=QLineEdit()
+                    serviceBox=QComboBox()
+                    serviceBox.addItems([service for service in self.data["Disciplines"]])
+
+                    stageBox=QComboBox()
+                    stageBox.addItems(["Stage 3", "Stage 4"]) ## if stage 4 is selected, then it is also stage 3
+                    form =QFormLayout()
+                    form.addRow('Schedule Name:',templateNameEdit)
+                    form.addRow('Service:',serviceBox)
+                    form.addRow('Stage:',stageBox)
+                    buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                    form.addRow(buttonBox)
+
+                    dialog=QDialog()
+                    buttonBox.accepted.connect(createTemplate)
+                    buttonBox.rejected.connect(dialog.reject)
+                    # dialog.setWindowFlags(Qt.Close)
+                    dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+                    dialog.setWindowTitle("New Template")
+                    dialog.setLayout(form)
+                    dialog.exec()
+
+                else:
+                    MsgBox("No 'Disciplines' found in the data.json file\n\nContact software programmer", setWindowTitle="      ", setIcon = QMessageBox.Information)
+            else:
+                MsgBox("No data.json file found in the schedules templates folder\n\nContact software programmer", setWindowTitle="      ", setIcon = QMessageBox.Information)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class NewSchedules_Dialog(QDialog):
+    def __init__(self):
+        try: 
+            super().__init__()
+            self.resize(700,732) #Window width and height
+            #Get schedules templates data
+            if path.exists(SchedulesTempFolder+"\\data.json"):  
+                self.schedulesData={}            
+                with open(SchedulesTempFolder+"\\data.json", 'r') as f:
+                    self.data=json_load(f)
+                if "Disciplines" in self.data:  
+                    glay=QGridLayout()
+                    types=set()
+                    for discipline, attr in self.data["Disciplines"].items():
+                        self.schedulesData[discipline]={"ServiceNo":attr["ServiceNo"], "Schedules":{}} #Create a dictionary of all disciplines
+                        label=QLabel(discipline)
+                        label.setStyleSheet("font: 16px;font-weight: bold;")
+                        col=glay.columnCount()
+                        glay.addWidget(label,0,col)
+                        #Create a checkbox for each schedule in the discipline and also add the checkbox to the schedulesData dict
+                        row=1
+                        for schedule in attr["Schedules"]:
+                                checkbox= QCheckBox(schedule)
+                                if path.exists(SchedulesTempFolder+"\\"+schedule+".xlsx")==False: #Check if the schedule template exists
+                                    checkbox.setCheckable(False)
+                                    # checkbox.setStyleSheet("color: red;")
+                                    checkbox.setToolTip("Template not found")
+                                    checkbox.setEnabled(False)
+                                #Add the checkbox to dict with type as well
+                                type= attr["Schedules"][schedule]["Type"]
+                                self.schedulesData[discipline]["Schedules"][schedule]={"Checkbox":checkbox, "Type":type}
+                                for typ in type:
+                                    types.add(typ)
+                                glay.addWidget(checkbox,row,col)
+                                row+=1
+                    glay.setVerticalSpacing(5)
+                    scroll = QScrollArea()
+                    scroll.setWidgetResizable(True)
+                    scroll.setWidget(QWidget())
+                    scroll.widget().setLayout(glay)
+
+                    #order types alphabetically
+                    types=sorted(types) #returns a list
+                    #Top right buttons
+                    typesLayout=QVBoxLayout()
+                    for typ in types:
+                        button=QPushButton(typ)
+                        button.clicked.connect(lambda x, type=typ: self.typeButtonClicked(type))
+                        typesLayout.addWidget(button)
+                    toplayout=QHBoxLayout()
+                    toplayout.addStretch()
+                    toplayout.addLayout(typesLayout)
+                    buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                    buttonBox.accepted.connect(self.titlesDialog)
+                    buttonBox.rejected.connect(self.reject)
+                    self.mainLayout=QVBoxLayout()
+                    self.mainLayout.addLayout(toplayout)
+                    self.mainLayout.addWidget(scroll)
+                    self.mainLayout.addWidget(buttonBox)
+                    self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+                    self.setLayout(self.mainLayout)
+                    self.setWindowTitle("New Schedule")
+                else:
+                    MsgBox("No 'Disciplines' found in the data.json file\n\nContact software programmer", setWindowTitle="      ", setIcon = QMessageBox.Information)
+            else:
+                MsgBox("No data.json file found in the schedules templates folder\n\nContact software programmer", setWindowTitle="      ", setIcon = QMessageBox.Information)
+
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            newschedulesdialog.close()
+
+    def typeButtonClicked(self, type):
+        try:
+            for service in self.schedulesData.values():
+                for schedule in service["Schedules"].values():
+                    schedule["Checkbox"].setChecked(False)
+                    if type in schedule["Type"]:
+                        schedule["Checkbox"].setChecked(True)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def titlesDialog(self):
+        try:
+            
+            # dialog.setLayout(form)
+            #Check if any type is selected
+            checked_types= [{'Schedule':schname,'Checkbox':schvalue['Checkbox'],'Type':schvalue['Type'],'ServiceNo':service['ServiceNo']} for service in self.schedulesData.values() for schname,schvalue in service["Schedules"].items() if schvalue["Checkbox"].isChecked()]
+            if checked_types!=[]:
+                self.schedulesTable= QTableWidget(1,1)
+                self.schedulesTable.setRowCount(len(checked_types))
+                self.schedulesTable.setHorizontalHeaderLabels(["Schedules"])
+                row=0
+                self.seqNoTempDict=SchedulesSeqNoDict.copy()
+                for sch in checked_types:
+                    self.schedulesTable.setItem(row,0,QTableWidgetItem(self.getRef(sch) + " - " + sch['Schedule']))
+                    self.schedulesTable.item(row,0).setData(256,sch['Schedule'])
+                    row+=1
+                self.schedulesTable.itemSelectionChanged.connect(self.selection_changed)#fuction to call when a schedule is selected
+                # print(SchedulesSeqNoDict)
+                # print(self.seqNoTempDict)
+
+                self.schedulesTable.verticalHeader().setVisible(False)
+                # self.schedulesTable.horizontalHeader().setVisible(False)
+                self.schedulesTable.setShowGrid(False)
+                header = self.schedulesTable.horizontalHeader()       
+                header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+                self.schedulesTable.setColumnWidth(0,self.schedulesTable.horizontalHeader().sectionSize(0))
+                header.setSectionResizeMode(0, QHeaderView.Interactive)
+                # header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+                # header.setSectionResi
+                # zeMode(2, QHeaderView.Interactive)
+
+                self.schedulesTable.setColumnWidth(0,800)
+
+                # print(checked_types.keys())
+                self.confirmdialog=QDialog()
+                self.confirmdialog.resize(800,600)
+                self.EditName=QLineEdit()
+                self.EditName.setEnabled(False)
+                self.EditName.textChanged.connect(self.nameChanged)
+                self.EditNameButton=QPushButton("Edit",self)
+                self.EditNameButton.setEnabled(False)
+                self.EditNameButton.clicked.connect(lambda: self.editSelectedName(True))
+                self.editHbox=QHBoxLayout()
+                self.editHbox.addWidget(self.EditNameButton)
+                self.editHbox.addWidget(self.EditName)
+
+                buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                buttonBox.accepted.connect(self.funcOK)
+                buttonBox.rejected.connect(self.confirmdialog.reject)
+                vbox= QVBoxLayout()
+                vbox.addWidget(self.schedulesTable)
+                vbox.addLayout(self.editHbox)
+                vbox.addWidget(buttonBox)
+                self.confirmdialog.setLayout(vbox)
+                self.confirmdialog.setWindowFlags(self.confirmdialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+                self.confirmdialog.setWindowTitle("Confirm Titles")
+                self.confirmdialog.exec()
+            else:
+                MsgBox("Please select at least one schedule",setWindowTitle="    ", setIcon = QMessageBox.Information)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def getRef(self, schdict):
+        try:
+            ribastage=RIBAstages[ThisProject_no+' - '+ ThisProject_name]
+            if ribastage=='': ribastage='XX'
+            prename= project3name_dict[ThisProject_foldername] +'-RCDC-'+ribastage+'-XX-SH-'+schdict['ServiceNo']
+            #Check if this name already exists
+            if prename in self.seqNoTempDict: #If it does, add 1 to the sequence number
+                sequential_no= str(self.seqNoTempDict[prename]+1).zfill(4)  
+            else: #If it doesn't, start the sequence number from 1
+                sequential_no= '0001'
+            self.seqNoTempDict[prename]=int(sequential_no) #Add the new spec to the dictionary
+            return prename+'-'+sequential_no
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def selection_changed(self):
+        try:
+            if len(self.schedulesTable.selectedItems())>0:
+                self.EditNameButton.setEnabled(True)
+                self.editSelectedName(False)
+            else:
+                self.EditNameButton.setEnabled(False)
+                self.EditName.setEnabled(False)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def editSelectedName(self, bool):
+        try:
+            if len(self.schedulesTable.selectedItems())>0:
+                if bool==True:
+                    self.EditName.setEnabled(True)
+                if " - " in self.schedulesTable.selectedItems()[0].text():
+                    self.EditName.setText(self.schedulesTable.selectedItems()[0].text().split(" - ",1)[1])
+                elif " " in self.schedulesTable.selectedItems()[0].text():
+                    self.EditName.setText(self.schedulesTable.selectedItems()[0].text().split(" ",1)[1])
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def nameChanged(self):
+        try:
+            if self.EditName.text() != "":
+                if " - " in self.schedulesTable.selectedItems()[0].text():
+                    self.schedulesTable.selectedItems()[0].setText(self.schedulesTable.selectedItems()[0].text().split(" - ",1)[0]+" - "+self.EditName.text())
+                elif " " in self.schedulesTable.selectedItems()[0].text():
+                    self.schedulesTable.selectedItems()[0].setText(self.schedulesTable.selectedItems()[0].text().split(" ",1)[0]+" - "+self.EditName.text())
+                else:
+                    self.schedulesTable.selectedItems()[0].setText(self.schedulesTable.selectedItems()[0].text()+" - "+self.EditName.text())
+            else:
+                self.schedulesTable.selectedItems()[0].setText(self.schedulesTable.selectedItems()[0].text().split(" - ",1)[0]+" - No name")
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def fillExcel(self, filename, schdict):
+        try:
+            wb = load_workbook(filename, read_only=False)
+            for ws in wb.worksheets: #Loop through all the sheets in the workbook
+                if ws.title!= "Manufacturer's Info":
+                    dict = schdict.copy() #Make a copy of the dictionary
+                    for row in ws.iter_rows(): #Loop through all the rows in the sheet
+                        for cell in row: #Loop through all the cells in the row
+                            if cell.value!=None and cell.value in dict: #If the cell value is in the dictionary, replace it with the dictionary value
+                                temp = cell.value
+                                cell.value = schdict[cell.value] #Replace the cell value with the dictionary value
+                                dict.pop(temp) #Remove the value from the dictionary
+                                if len(dict)==0: #If the dictionary is empty, break the loop
+                                    break
+                        if len(dict)==0: #If the dictionary is empty, break the loop
+                            break
+            wb.save(filename)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def funcOK(self):
+        try:
+            # pass
+            if path.exists(Project_Database)==True:
+                if path.exists(ProjectSchedulesFolder):
+            #         #Check if schedules template folder exists for this stage
+                    if path.exists(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
+                        mkdir(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])
+                        mkdir(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\SS')
+                    # Check if templates for selected  schedules exist
+                    ####
+                    for sch in range(0,self.schedulesTable.rowCount()):
+                        if not path.exists(SchedulesTempFolder+'\\'+self.schedulesTable.item(sch,0).data(256)+'.xlsx'):
+                            MsgBox("Template '"+self.schedulesTable.item(sch,0).data(256)+"'.xlsx' was not found\n",setWindowTitle="    ", setIcon = QMessageBox.Information)
+                            break
+                        if path.exists(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.schedulesTable.item(sch,0).text()+'.xlsx'):
+                            MsgBox("Schedule '"+self.schedulesTable.item(sch,0).text()+".xlsx' already exists\n\nPlease rename the schedule",setWindowTitle="    ", setIcon = QMessageBox.Information)
+                            break
+                    else:
+                        con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';' #Connect to the project database
+                        conn = pyodbc_connect(con_string)
+                        cursor =conn.cursor()      
+                        for sch in range(0,self.schedulesTable.rowCount()):
+
+                            schedule=self.schedulesTable.item(sch,0).text()
+                            scheduleRef=schedule.split(" - ",1)[0]
+                            scheduleTitle=schedule.split(" - ",1)[1]
+                            filePath= ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+schedule+'.xlsx'
+                            copyfile(SchedulesTempFolder+'\\'+self.schedulesTable.item(sch,0).data(256)+'.xlsx', filePath)
+                            #edit the excel file
+                            self.fillExcel(filePath, {"[PROJECT NAME]":ThisProject_name, "[PROJECT NUMBER]":int(ThisProject_no), "[SCHEDULE REF]":scheduleRef, "[SCHEDULE TITLE]" : scheduleTitle, "[DATE]":datetime.now().strftime("%d/%m/%Y"),"[REVISION]":"P01"})
+                            values = (
+                                (scheduleRef[:-5], scheduleRef[-4:], scheduleTitle  )
+                            )
+                            cursor.execute("INSERT INTO Schedules (Ref, SeqNo, PostName) VALUES (?,?,?)", values)
+                            SchedulesSeqNoDict[scheduleRef[:-5]]=int(scheduleRef[-4:]) #Add the new schedule to the dictionary
+                        conn.commit()
+                        cursor.close()
+                        conn.close()#Save changes and close cursor and connection
+                        self.close()
+                        self.confirmdialog.close()
+                        widget.removeWidget(specswindow)
+                        specswindow.__init__()
+                        widget.addWidget(specswindow)
+                        widget.setCurrentWidget(specswindow)
+                        msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
+                        msg.exec_()
+            #                 #Open the file
+            #                 # startfile(filename)# open the file
+            #                 break
+                else:
+                    MsgBox("The path " +ProjectSchedulesFolder+" was not found",setWindowTitle="Error: This project's schedules folder missing", setIcon = QMessageBox.Critical)
+            else:
+                MsgBox("This PROJECT ADMIN DATABASE was not found\Contact software programmer",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class FeesandFinancesWindow(QMainWindow):
+    def __init__(self):
+        try:
+            super().__init__()
+
+            self.stackedWidget = QStackedWidget()
+            self.setCentralWidget(self.stackedWidget)
+
+            # self.feeJotterWidget = FeeJotterWidget()
+            # self.stackedWidget.addWidget(self.feeJotterWidget)
+
+            self.feeProposalWidget = FeeProposalWidget()
+            self.stackedWidget.addWidget(self.feeProposalWidget)
+            
+
+
+            menuBar = self.menuBar()
+            
+            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
+            backMenu= QAction(icon=QIcon(back_icon), parent= self)
+            feesandfinanceMenu= QMenu("Fees and Finance", parent= self)
+            # feesandfinanceMenu.addAction("Fee Jotter", lambda: self.stackedWidget.setCurrentIndex(0))
+            feesandfinanceMenu.addAction("Fees Proposal", lambda: self.stackedWidget.setCurrentIndex(1))
+            menuBar.addAction(backMenu)
+            menuBar.addAction(homeMenu)
+            menuBar.addMenu(feesandfinanceMenu)
+            homeMenu.triggered.connect(self.homeAction)
+            backMenu.triggered.connect(self.backAction)
+            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
+
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    
+    def HelpClicked(self):
+        try:
+            with open(help_json, 'r') as f:
+                self.data=json_load(f)
+            MsgBox(self.data["Fees and Finances"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def backAction(self):
+        try:
+            #Go back to project page
+            widget.setCurrentWidget(projectwindow)
+            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def homeAction(self):
+        try:
+            widget.setCurrentWidget(initwindow)
+            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class FeeJotterWidget(QWidget):
+    def __init__(self):
+        try:
+            super().__init__()
+            self.projectValue= QDoubleSpinBox()
+            self.projectValue.setGroupSeparatorShown(True)
+            self.projectValue.setPrefix("£")
+            self.projectValue.setRange(0, 1000000000000000000)
+
+            self.startDate= QDateEdit()
+            self.startDate.setCalendarPopup(True)
+            self.startDate.setDate(QDate.currentDate())
+
+            self.likelyhoodWinBox=QComboBox()
+            self.likelyhoodWinBox.addItems(["High", "Medium", "Low"])
+
+            self.inputInfoGrid= QGridLayout()
+            gridsItems=[("Project Value:", self.projectValue), ("Likelyhood Win:", self.likelyhoodWinBox), ("Start Date:", self.startDate)]
+            self.addToGrid(gridsItems, self.inputInfoGrid, 3)
+            self.inputInfoGrid.setHorizontalSpacing(20)
+            inputDashBoard=QWidget()
+            inputDashBoard.setStyleSheet("""QLabel {font-weight: bold;} """)  
+            inputDashBoard.setLayout(self.inputInfoGrid)
+
+
+            self.totalTime= QDoubleSpinBox()
+            self.totalTime.setGroupSeparatorShown(True)
+            self.totalTime.setSuffix(" days")
+            self.totalTime.setRange(0, 1000000000000000000)
+            self.totalTime.setEnabled(False)
+
+            self.totalFee= QDoubleSpinBox()
+            self.totalFee.setGroupSeparatorShown(True)
+            self.totalFee.setPrefix("£")
+            self.totalFee.setRange(0, 1000000000000000000)
+            self.totalFee.setEnabled(False)
+
+            self.RCDCFee= QDoubleSpinBox()
+            self.RCDCFee.setGroupSeparatorShown(True)
+            self.RCDCFee.setPrefix("£")
+            self.RCDCFee.setRange(0, 1000000000000000000)
+            self.RCDCFee.setEnabled(False)
+            
+            self.FeePercentofValue= QDoubleSpinBox()
+            self.FeePercentofValue.setSuffix("%")
+            self.FeePercentofValue.setRange(0, 10000)
+            self.FeePercentofValue.setEnabled(False)
+
+            
+            self.outputInfoGrid= QGridLayout()
+            outPutGridsItems=[("Total Time", self.totalTime), ("Total Fee", self.totalFee), ("RCDC Fee", self.RCDCFee), ("Fee as % of Value", self.FeePercentofValue)]
+            self.addToGrid(outPutGridsItems, self.outputInfoGrid, 2)
+            self.outputInfoGrid.setHorizontalSpacing(50)
+
+
+            outPutDashBoard=QWidget()
+            outPutDashBoard.setStyleSheet("""
+                    QWidget {
+                        background-color: rgb(210, 210, 210);
+                        border: 1px solid rgb(150, 150, 150);
+                    }
+                    QLabel {
+                        color: rgb(0, 0, 0);
+                        font-weight: bold;
+                    }
+                    QDoubleSpinBox, QComboBox, QDateEdit {
+                        background-color: rgb(210, 210, 210);
+                        color: rgb(0, 0, 0);
+                        border: 1px solid rgb(150, 150, 150);
+                        padding: 2px;
+                    }
+                    QDoubleSpinBox::up-button, QDoubleSpinBox::down-button, QDateEdit::up-button, QDateEdit::down-button {
+                        color: rgb(210, 210, 210);
+                        background-color: rgb(210, 210, 210);
+                    }
+                    QDoubleSpinBox::up-arrow, QDoubleSpinBox::down-arrow, QDateEdit::up-arrow, QDateEdit::down-arrow {
+                       color: rgb(210, 210, 210);
+                        background-color: rgb(210, 210, 210);
+                    }
+                    """)
+
+            outPutDashBoard.setLayout(self.outputInfoGrid)
+
+            dashBoardLayout= QHBoxLayout()
+            dashBoardLayout.addStretch(1)
+            dashBoardLayout.addWidget(inputDashBoard,1)
+            dashBoardLayout.addStretch(5)
+            dashBoardLayout.addWidget(outPutDashBoard)
+            dashBoardLayout.addStretch(1)
+
+            self.EditButton=QPushButton("Edit")
+            self.EditButton.setMaximumWidth(150)
+
+            self.staffResourceTable = QTableWidget(1,1)
+            self.columnLabels=["Member Intial","Task","Staff Resource"]
+            self.staffResourceTable.setColumnCount(len(self.columnLabels))
+
+
+            self.staffResourceTable.setHorizontalHeaderLabels(self.columnLabels)
+
+            self.staffResourceTable.setRowCount(10)
+            for row in range(10):
+                initialsBox=QComboBox()
+                initialsBox.addItems(RCDC_employees)
+                initialsBox.setEditable(True)
+                initialsBox.setCurrentText("")
+                self.staffResourceTable.setCellWidget(row, self.columnLabels.index("Member Intial"), initialsBox)
+                taskBox=QComboBox()
+                taskBox.addItems(["Site Survey", "Design", "Drawing", "Site Visit", "Meeting", "Admin", "Other"])
+                taskBox.setEditable(True)
+                taskBox.setCurrentText("")
+                self.staffResourceTable.setCellWidget(row, self.columnLabels.index("Task"), taskBox)
+                staffResourceRolesBox=QComboBox()
+                staffResourceRolesBox.addItems(["Project Manager", "Architect", "Structural Engineer", "Mechanical Engineer", "Electrical Engineer", "Quantity Surveyor", "Other"])
+                staffResourceRolesBox.setEditable(True)
+                staffResourceRolesBox.setCurrentText("")
+                self.staffResourceTable.setCellWidget(row, self.columnLabels.index("Staff Resource"), staffResourceRolesBox)
+                
+            
+          #Refresh button
+            RefreshButton = ToolButton(" Refresh ", icon=refresh_icon, icon_width=40, icon_height=35)
+            # QShortcut(QKeySequence('F5'),self).activated.connect(self.refreshTable)
+
+
+          #Project Label
+            currentProjectLabel= QLabel("Fee Jotter:    " +ThisProject_foldername)
+            currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
+            self.FeesTable = QTableWidget(1,1)
+
+            OptionsLayout=QHBoxLayout()
+            OptionsLayout.addStretch(5)
+            OptionsLayout.addWidget(RefreshButton)
+            OptionsLayout.addStretch(18)
+            OptionsLayout.addWidget(currentProjectLabel)
+            OptionsLayout.addStretch(30)
+            # Create a horizontal line using QFrame
+            horizontalLine = QFrame()
+            horizontalLine.setFrameShape(QFrame.HLine)
+            horizontalLine.setFrameShadow(QFrame.Sunken)
+                    
+            MainLayout= QVBoxLayout()
+            MainLayout.addLayout(OptionsLayout)
+            MainLayout.addWidget(horizontalLine)
+            MainLayout.addWidget(self.EditButton)
+            MainLayout.addLayout(dashBoardLayout)
+            MainLayout.addWidget(self.staffResourceTable)
+            
+            self.setLayout(MainLayout)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def addToGrid(self, items, grid, rowCount):
+        try:
+            for i, item in enumerate(items):
+                hlayout=QHBoxLayout()
+                hlayout.addWidget(QLabel(item[0]), alignment=Qt.AlignLeft)
+                hlayout.addStretch(1)
+                item[1].setFixedWidth(170)
+                hlayout.addWidget(item[1], alignment=Qt.AlignRight)
+                # hlayout.addStretch(2)
+                grid.addLayout(hlayout, i%rowCount, i//rowCount)
+                
+
+            
+            
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class FeeProposalWidget(QWidget):
+    def __init__(self):
+        try:
+            super().__init__()
+          #New  Button
+            NewButton = ToolButton("New",icon=newdrawing_icon, icon_width=75, icon_height=42)
+            # NewButton.setGeometry(QRect(40, 63,170, 70))
+            menu=QMenu()
+            NewButton.setMenu(menu)
+            NewButton.setPopupMode(QToolButton.InstantPopup)
+            self.feeaction=menu.addAction("Fees Proposal")
+            # self.bidaction=menu.addAction("Bid Document")
+            self.feeaction.triggered.connect(lambda:self.NewFeesProposalClicked())
+
+          #Refresh button
+            RefreshButton = ToolButton(" Refresh ", icon=refresh_icon, icon_width=40, icon_height=35, clicked=self.refreshTable)
+            QShortcut(QKeySequence('F5'),self).activated.connect(self.refreshTable)
+
+          #Help button
+            HelpButton = QToolButton()
+            HelpButton.setText(" ? ")
+            HelpButton.clicked.connect(self.HelpClicked)#Connecting the button to its function when clicked
+
+          #Project Label
+            currentProjectLabel= QLabel("Fees Proposal:    " +ThisProject_foldername)
+            currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
+            self.FeesTable = QTableWidget(1,1)
+
+          #Fees Table
+            self.refreshTable()
+          #Table header expansion   
+            header = self.FeesTable.horizontalHeader()       
+            header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            # header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            # header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+            colsizelist=[self.FeesTable.horizontalHeader().sectionSize(0)]
+            # self.FeesTable.setSelectionBehavior(1)
+            # #Table expansion
+            for i in range(1):
+                header.setSectionResizeMode(i, QHeaderView.Interactive)
+                self.FeesTable.setColumnWidth(i,colsizelist[i]+60)
+            self.FeesTable.setShowGrid(False)
+            self.FeesTable.verticalHeader().setVisible(False)
+            self.FeesTable.setHorizontalScrollMode(QTableWidget.ScrollPerPixel)
+            self.FeesTable.horizontalHeader().setMinimumWidth(500)
+
+            self.projectadminfile=ProjectFinanceFolder+"\\4 Finance Admin\\PROJECT FINANCE - "+ThisProject_name+".xlsx"
+
+
+            # #Invoices process
+            # financeAdminButton = QPushButton("Finance Admin")
+            # financeAdminButton.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
+            # financeAdminButton.clicked.connect(self.OpenFinanceAdmin)
+
+            # #Create invoice button
+            # invoiceButton = QPushButton("Create\n Invoice")
+            # invoiceButton.setStyleSheet("QPushButton{background-color:rgb(183,183,183);} QPushButton::hover{background-color:#a5a5a5;} QPushButton::disabled{background-color:rgba(183,183,183,0.3);}")
+            # invoiceButton.clicked.connect(self.CreateInvoice)
+
+            # invoiceManagementLabel=QLabel("Invoice Management")
+            # invoiceManagementLabel.setFont(QFont("Gill Sans MT", 12))
+            # invoiceManagementLabel.setAlignment(Qt.AlignCenter)
+            # invoiceGrid=QGridLayout()
+            # invoiceGrid.addWidget(financeAdminButton,0,0)
+            # invoiceGrid.addWidget(invoiceButton,0,1)
+            # items=(invoiceGrid.itemAt(i) for i in range(invoiceGrid.count()))
+            # for w in items:
+            #     w.widget().setMinimumHeight(163)
+            #     w.widget().setMaximumWidth(200)
+            #     w.widget().setFont(QFont("Gill Sans MT", 12))
+            
+            # invoiceVLayout=QVBoxLayout()
+            # invoiceVLayout.addStretch(1)
+            # invoiceVLayout.addWidget(invoiceManagementLabel)
+            # invoiceVLayout.addStretch(2)
+            # invoiceVLayout.addLayout(invoiceGrid)
+            # invoiceVLayout.addStretch(9)
+            invoiceWidget=QWidget()
+            # invoiceWidget.setLayout(invoiceVLayout)
+
+
+          #Page formats
+            # self.setCentralWidget(self.scroll)
+            OptionsLayout=QHBoxLayout()
+            OptionsLayout.addStretch(5)
+            OptionsLayout.addWidget(NewButton)
+            OptionsLayout.addStretch(1)
+            OptionsLayout.addWidget(RefreshButton)
+            OptionsLayout.addStretch(1)
+            OptionsLayout.addWidget(HelpButton)
+            OptionsLayout.addStretch(18)
+            OptionsLayout.addWidget(currentProjectLabel)
+            OptionsLayout.addStretch(30)
+
+            
+
+            # feesLayout=QVBoxLayout()
+            # # sketchesLayout=QVBoxLayout()
+            # # feesLayout.addWidget(self.Fees_search)
+            # feesLayout.addWidget(self.FeesTable)
+
+            MainLayout= QHBoxLayout()
+            # lLayout=QVBoxLayout()
+            # # self.FeesTable.setMaximumWidth(1000)
+            # lLayout.addWidget(self.FeesTable)
+            # rLayout=QVBoxLayout()
+            # rLayout.addWidget(financeAdminButton)
+            # rLayout.addWidget(invoiceButton)
+            split=QSplitter()
+            split.addWidget(self.FeesTable)
+            # split.addWodget(invoiceGrid)
+            split.addWidget(invoiceWidget)
+            split.setSizes([500,500])
+            MainLayout.addWidget(split)
+
+            # MainLayout.addLayout(lLayout)
+            # MainLayout.addLayout(rLayout)
+            # MainLayout.addStretch(1)
+
+            FullLayout=QVBoxLayout()
+            FullLayout.addLayout(OptionsLayout)
+            FullLayout.addLayout(MainLayout,5) 
+            # FullLayout.addStretch(1)
+
+            self.setLayout(FullLayout)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def eventFilter(self, source, event): 
+        try:
+            if event.type() == QEvent.ContextMenu and source ==self.FeesTable:
+                if len(source.selectionModel().selectedRows())>0:
+                    menu = QMenu(self)
+                    menu.addAction("Delete",lambda: self.delete(source))
+                    menu.addAction("Open",lambda: self.openfile(source))
+                    menu.exec_(event.globalPos())
+                    return True
+            return super().eventFilter(source, event)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def refreshTable(self):
+        try:
+            self.FeesTable.clear()
+            self.FeesTable.setRowCount(0)
+            if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal'):
+                self.FeesTable.setHorizontalHeaderLabels(["Reports Name"])
+                d=0
+                for file in listdir(ProjectFinanceFolder+'\\3 Fee Proposal'):
+                    if file.endswith(".docx"):
+                        self.FeesTable.setRowCount(d+1)
+                        self.FeesTable.setItem(d,0,QTableWidgetItem(file.rsplit('.',1)[0]))
+                        d+=1
+                self.FeesTable.itemDoubleClicked.connect(lambda: self.openfile(self.FeesTable))
+                QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.FeesTable))
+                self.FeesTable.installEventFilter(self)
+
+            else:
+                self.FeesTable.setItem(0, 0,QTableWidgetItem("Path '" + ProjectFinanceFolder + '\\3 Fee Proposal' + "' not found"))
+                self.FeesTable.item(0,0).setBackground(QColor("#EE1111"))
+                self.feeaction.setEnabled(False)
+                self.FeesTable.horizontalHeader().setVisible(False)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def delete(self, tableobj):
+        try:
+            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
+            if len(self.selectionindexes):
+                qm=QMessageBox()
+                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete these " + str(len(self.selectionindexes)) + " item(s)?", qm.Yes | qm.No)
+                if ret == qm.Yes:
+                    for i in self.selectionindexes:
+                        if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx"):
+                            while True:
+                                try:
+                                    remove(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx")
+                                    break
+                                except IOError:
+                                    #If there's error while opening the file, tell user to close the file to continue
+                                    MsgBox("Please make sure the "+ ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
+                        else:
+                            MsgBox(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+                    self.refreshTable()
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def openfile(self, tableobj):
+        try:
+            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
+            for i in self.selectionindexes:
+                if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx"):
+                    Popen([ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+".docx"],shell=True)
+                else:
+                    MsgBox(ProjectFinanceFolder+'\\3 Fee Proposal\\'+tableobj.item(i,0).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def NewFeesProposalClicked(self):
+        try:
+            global newfeesproposaldialog
+            newfeesproposaldialog=NewFeesProposal_Dialog()
+            newfeesproposaldialog.exec()
+
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def CreateInvoice(self):
+        try:
+            def getFeesnAddressFromAdmin():
+                try:
+                    month_year= monthYearCombo.currentText().split("/")
+                    month=int(month_year[0])
+                    year=int(month_year[1])
+                    tracktime(reset=True)
+                    if None in month_year: return
+                    dateFound=False    
+                    this_admin_data={"fees":[]}            
+                    projectadminfile=ProjectFinanceFolder+"\\4 Finance Admin\\PROJECT FINANCE - "+ThisProject_name+".xlsx"
+                    if path.exists(projectadminfile):
+                        while True:
+                            try:
+                                wb= load_workbook(projectadminfile, read_only=True, data_only=True)
+                                sheetnames=wb.sheetnames
+                                if "Incoming" in sheetnames:
+                                    sheet=wb["Incoming"]
+                                    last_row= sheet.max_row #Get last row in the sheet
+                                    #Get the column with the date
+                                    date_col=None
+                                    for r,values in enumerate(sheet.iter_rows(max_row=last_row, values_only=True)):
+                                        if r==0:
+                                            for c,val in enumerate(values):
+                                                if val.__class__==datetime and val.month==month and val.year==year:
+                                                    date_col=c
+                                                    dateFound=True
+                                                    break
+                                            else:
+                                                break #Specified date column not found
+                                        else:
+                                            if len(values)>date_col and values[date_col] not in [None,""]:
+                                                if r==1:
+                                                    this_admin_data["total"]=values[date_col]
+                                                else:
+                                                    fee_data={
+                                                        "PO":values[0] if values[0] not in [None,""] else "PO TBC",
+                                                        "Reference":values[1] if values[1] not in [None,""] else "TBC",
+                                                        "Amount":values[date_col]
+                                                        }
+                                                    this_admin_data["fees"].append(fee_data)
+                                if "Project Info" in sheetnames:
+                                    sheet=wb["Project Info"]
+                                    for r,values in enumerate(sheet.iter_rows(max_row=2,min_col=2,max_col=2, values_only=True)):
+                                        if r==0:
+                                            this_admin_data["client"]=values[0]
+                                        if r==1:
+                                            this_admin_data["address"]=values[0]
+                                wb.close()
+                                if not dateFound:
+                                    MsgBox("No invoice found for "+monthYearCombo.currentText(), setWindowTitle="          ", setIcon = QMessageBox.Information)
+                                    return
+                                break
+                            except IOError:
+                                MsgBox(projectadminfile+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Project Finance Admin file open",setIcon=QMessageBox.Critical)
+                    else:
+                        MsgBox(projectadminfile+" not found\n\nIf confused please contact software programmer",setWindowTitle="Project Finance Admin file missing",setIcon=QMessageBox.Critical)
+                        return
+                    if this_admin_data["fees"]==[]:
+                        MsgBox("No fees found for "+monthYearCombo.currentText(), setWindowTitle="          ", setIcon = QMessageBox.Information)
+                        return
+                    else:
+                        return this_admin_data
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            def setInvoiceNo():
+                try:
+                    if newInvRadioBut.isChecked():
+                        excel=Dispatch("Excel.Application")
+                        excel.DisplayAlerts=False
+                        while True:
+                            try:
+                                #Fill the invoice template
+                                excel.Visible=False
+                                book = excel.Workbooks.Open(Invoices_Tracking_Schedule_xlsx)
+                                sheet=book.Worksheets(invs_sheetCombo.currentText())
+                                # last_row= sheet.max_row #Get last row in the sheet
+                                # sheet.Range(f"C{last_row+4}").Value=2442
+                                sheet.Range("C17").Value=2442
+                                book.Save()                                 
+                                break
+                            except Exception as e:
+                                book.Close(True)
+                                print(e)
+                        print("filled, waiting to close")
+                        book.Close(True)
+                        print("closed")
+                        # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
+                        if excel.Workbooks.Count==0:
+                            excel.Quit()
+                            print("quit")
+                        else:
+                            excel.Visible=True
+                            excel.DisplayAlerts=True
+
+
+
+
+                        # while True:
+                        #     try:
+                        #         wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=False, keep_links=False)# data_only=True)
+                        #         sheet=wb[invs_sheetCombo.currentText()]
+                        #         last_row= sheet.max_row #Get last row in the sheet
+                        #         #Loop through the rows to get the last invoice number (integer)
+                        #         # for r,values in enumerate(sheet.iter_rows(min_row=max_row+1, max_row=last_row, min_col=1, max_col=1, values_only=True)):
+                        #         all_rows = list(sheet.iter_rows(max_row=last_row, min_row=12, min_col=3, max_col=3, values_only=True))
+                        #         #remove trailing empty rows
+                        #         for index in range(len(all_rows) - 1, -1, -1):
+                        #             if isinstance(all_rows[index][0], int):
+                        #                 row=index+13
+                        #                 invoice_no=all_rows[index][0]+1
+                        #                 break
+                        #         else:
+                        #             row=13
+                        #             invoice_no=1
+                        #         # print(row,invoice_no)
+                        #         #insert a row in the row
+                        #         # sheet.insert_rows(row)
+                        #         # fill=[cel.fill for col in sheet.iter_cols(min_row=row-1,max_row=row-1,min_col=3,max_col=3) for cel in col]
+                        #         # print(fill)
+                        #         # sheet.cell(row,3).fill=copy(fill[0])
+                        #         # if sheet.cell(last_row,0).value!=None:
+                        #         sheet.cell(row,3).value=invoice_no
+                        #         wb.save(Invoices_Tracking_Schedule_xlsx)
+                        #         wb.close()
+                        #         break
+                        #     except IOError:
+                        #         MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
+                
+
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+            def fillandExportInvoiceTemplate(this_admin_data):
+                try:
+                    setInvoiceNo()
+                    tracktime(msg="Gotten admin data")
+                    # for i in invoice_data:
+                    #     print(i)
+                    def get_FeeAndSubTotal_Row():
+                        '''Gets the fee total and subtotal row in the invoice template.
+                        - returns the row number of the fee total and subtotal row
+                        '''
+                        try:
+                            feetotal_row=None
+                            subtotal_row=None
+                            while True:
+                                try:
+                                    wb= load_workbook(Invoice_Template, data_only=True, read_only=True)
+                                    sheet=wb["Sheet1"]
+                                    for r,values in enumerate(sheet.iter_rows(min_row=13, values_only=True)):
+                                        if 'Fee Total' in values: feetotal_row= r+13
+                                        if 'Subtotal' in values: subtotal_row= r+13
+                                    wb.close()
+                                    break
+                                except IOError:
+                                    MsgBox(Invoice_Template+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice Template file open",setIcon=QMessageBox.Critical)
+                            return feetotal_row, subtotal_row
+                        except:
+                            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                    if path.exists(Invoice_Template):
+                        feetotal_row,subtotalrow=get_FeeAndSubTotal_Row()
+                        excel=Dispatch("Excel.Application")
+                        shrtcutshell=Dispatch("WScript.Shell")
+                        excel.Visible=False
+                        excel.DisplayAlerts=False
+                        if feetotal_row!=None and subtotalrow!=None and feetotal_row<subtotalrow:
+                            space_available=subtotalrow-feetotal_row-1
+                            invno=invoiceNoEdit.text()
+                            while True:
+                                try:
+                                    #Fill the invoice template
+                                    book = excel.Workbooks.Open(Invoice_Template)
+                                    sheet=book.Worksheets("Sheet1")
+                                    sheet.Range("G9").Value=f"{invno}"
+                                    sheet.Range("G10").Value=dateEdit.date().toString("dd/MM/yyyy")
+                                    client=this_admin_data["client"]
+                                    if client in [None,""]: client= ThisProject_client
+                                    sheet.Range("A14").Value=client
+                                    sheet.Range("A15").Value=this_admin_data["address"]
+                                    sheet.Range("A25").Value=f"{ThisProject_no}"
+                                    sheet.Range("C25").Value=ThisProject_name
+                                    #Fill the fees
+                                    fees=this_admin_data["fees"]
+                                    rows_needed=len(fees)-space_available
+                                    # space_available=len(fees)
+                                    #if the rows needed is greater than space available, insert rows
+                                    if rows_needed>0:
+                                        #add the needed rows above the subtotal row
+                                        sheet.Rows(f"{subtotalrow}:{subtotalrow+rows_needed-1}").Insert()
+                                        #update the subtotal row
+                                        subtotalrow+=rows_needed
+                                    elif rows_needed<0:
+                                        #delete the extra rows
+                                        sheet.Rows(f"{subtotalrow+rows_needed}:{subtotalrow-1}").Delete()
+                                        #update the subtotal row
+                                        subtotalrow+=rows_needed       
+                                    for r in range(feetotal_row+1,feetotal_row+len(fees)+1):
+                                        feeindex=r-feetotal_row-1
+                                        #Fill the fee details
+                                        sheet.Range(f"A{r}").Value=fees[feeindex]["PO"]
+                                        sheet.Range(f"C{r}").Value=fees[feeindex]["Reference"]
+                                        sheet.Range(f"G{r}").Value=fees[feeindex]["Amount"]
+                                        #Merge  A:B and C:F cells for each inserted row
+                                        sheet.Range(f"A{r}:B{r}").Merge()
+                                        sheet.Range(f"C{r}:F{r}").Merge()
+                                        #Set bottom border, left border and right border
+                                        sheet.Range(f"A{r-1}:G{r}").Borders(9).Weight=3 #bottom border
+                                        sheet.Range(f"A{r}").Borders(7).Weight=3 #left border
+                                        sheet.Range(f"B{r}").Borders(10).Weight=2 #right border
+                                        sheet.Range(f"G{r}").Borders(7).Weight=2 #
+                                        sheet.Range(f"G{r}").Borders(10).Weight=3 
+                                        #Auto fit columns C
+                                        sheet.Columns("C").AutoFit()
+                                    #put total in the subtotal row
+                                    sheet.Range(f"G{subtotalrow}").Value=this_admin_data["total"]
+                                    #Export the invoice template
+                                    # book.SaveAs(r"C:\Users\olumi\OneDrive\Documents\Acer\_Chunks"+f"\\{invno}.pdf", FileFormat=57)
+                                    invfilename="RCDCtest - INV - "+str(invno).zfill(4)+" - "+ ThisProject_name+" - "+f"{ThisProject_no}"
+                                    if path.exists(Invoice_Issues):
+                                        book.SaveAs(Invoice_Issues+"\\"+invfilename+".pdf", FileFormat=57)
+                                    #Save the shortcut
+                                        projectinvoicefolder=Project_Folders_dst+"\\"+f"{ThisProject_no}"+" - "+ThisProject_name+"\\1 Fees and Invoicing\\1 Invoices"
+                                        if path.exists(projectinvoicefolder):
+                                            shortcut=shrtcutshell.CreateShortCut(projectinvoicefolder+"\\"+invfilename+".lnk")
+                                            shortcut.Targetpath=Invoice_Issues+"\\"+invfilename+".pdf"
+                                            shortcut.save() 
+                                    # book.application.displayalerts=False
+                                    tracktime(msg="Filled and pdfed all invoices")
+                                    book.Close(True)
+                                    break
+                                except Exception as e:
+                                    book.Close(True)
+                                    MsgBox("Make sure the invoice template and existing pdf for this invoice is closed\n\nIf confused please contact software programmer",setWindowTitle="Invoice template or invoice pdf open",setIcon=QMessageBox.Critical)
+                                    # print(e)
+
+                        # book.Close(True)
+                        tracktime(msg="Closed invoice template")
+                        # book.ExportAsFixedFormat(0, Invoices_dst+"\\"+invno+".pdf")
+                        if excel.Workbooks.Count==0:
+                            excel.Quit()
+                        else:
+                            excel.Visible=True
+                            excel.DisplayAlerts=True
+                        # shrtcutshell.Quit()
+                        # print("Done")
+                        dialog.reject()
+                        msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
+                        msg.exec_()
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            
+            def funcOk():
+                try:
+                    if updateInvRadioBut.isChecked():
+                        if invoiceNoEdit.text() in [None,""]:
+                            MsgBox("Enter invoice no.", setWindowTitle="Error", setIcon = QMessageBox.Information)
+                            return
+                        invoice_no=invoiceNoEdit.text()
+                    this_admin_data=getFeesnAddressFromAdmin()
+                    if this_admin_data:
+                       if newInvRadioBut.isChecked():
+                            setInvoiceNo()
+                            print("Invoice no. set")
+                    #    fillandExportInvoiceTemplate(this_admin_data)
+
+                   
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            if path.exists(Invoices_Tracking_Schedule_xlsx):
+                #Get all sheets in the workbook that start with 'INVS-Year '
+                while True:
+                    try:
+                        wb= load_workbook(Invoices_Tracking_Schedule_xlsx, read_only=True, data_only=True)
+                        sheet_names=wb.sheetnames
+                        sheet_names=[sheet for sheet in sheet_names if sheet.startswith("INVS-Year ")]
+                        wb.close()
+                        break
+                    except IOError:
+                        MsgBox(Invoices_Tracking_Schedule_xlsx+" open\n\nClick OK when closed\n\nIf confused please contact software programmer",setWindowTitle="Invoices Tracking Schedule file open",setIcon=QMessageBox.Critical)
+            else:    
+                MsgBox("No invoice tracking schedule found\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule not found",setIcon=QMessageBox.Critical)
+                return
+
+            if sheet_names==[]:
+                MsgBox("No sheet with name starting with 'INVS-Year ' found in the invoice tracking schedule\n\nIf confused please contact software programmer",setWindowTitle="Invoice Tracking Schedule sheet not found",setIcon=QMessageBox.Critical)
+                return
+            curdate=QDate.currentDate()
+            dialog=QDialog()
+            dateEdit=QDateEdit()
+            dateEdit.setDate(curdate)
+            monthYearCombo=QComboBox()
+            
+            # Get from last two months till next month
+            months=[curdate.addMonths(i).toString("MM/yyyy") for i in range(-5,2)]
+            monthYearCombo.addItems(months)
+            monthYearCombo.setCurrentIndex(len(months)-2)
+            # invs_sheetCombo=QComboBox()
+            invs_sheetCombo=QComboBox()
+            invs_sheetCombo.addItems(sheet_names)
+            invs_sheetCombo.setCurrentIndex(len(sheet_names)-1)
+            #New or updated radio button
+            newInvRadioBut=QRadioButton("New Invoice")
+            updateInvRadioBut=QRadioButton("Update")
+            invoiceNoEdit=QLineEdit()
+            invoiceNoEdit.setPlaceholderText("Invoice No.")
+            invoiceNoEdit.setValidator(QRegExpValidator(QRegExp("[0-9]{3}")))
+            newInvRadioBut.toggled.connect(lambda: invoiceNoEdit.setHidden((newInvRadioBut.isChecked())))
+            updateInvRadioBut.toggled.connect(lambda: invoiceNoEdit.setHidden(not(updateInvRadioBut.isChecked())))
+            newInvRadioBut.setChecked(True)
+            neworupdateVLayout=QGridLayout()
+            neworupdateVLayout.addWidget(newInvRadioBut,0,0)
+            neworupdateVLayout.addWidget(updateInvRadioBut,0,1)
+            neworupdateVLayout.addWidget(invoiceNoEdit,1,1,1,2)
+
+            form=QFormLayout()
+            form.addRow("Date you're invoicing:",dateEdit)
+            form.addRow("Invoice for which Month:",monthYearCombo)
+            form.addRow("INVS Worksheet:",invs_sheetCombo)
+            form.addRow(neworupdateVLayout)
+            buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttonBox.accepted.connect(funcOk)
+            buttonBox.rejected.connect(dialog.reject)
+            form.addRow(buttonBox)
+
+            dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            dialog.setWindowTitle("Create Invoices")
+            dialog.setLayout(form)
+            dialog.resize(300,150)
+            dialog.exec()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def OpenFinanceAdmin(self):
+        try:
+
+            if path.exists(self.projectadminfile):
+                #Open the issue sheet
+                startfile(self.projectadminfile)
+            else:
+                MsgBox("'"+self.projectadminfile+"' not found", setWindowTitle="Finance Admin file missing", setIcon = QMessageBox.Information)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+
+    def HelpClicked(self):
+        try:
+            with open(help_json, 'r') as f:
+                self.data=json_load(f)
+            MsgBox(self.data["Fees and Finances"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class NewFeesProposal_Dialog(QDialog):
+    def __init__(self):
+        try: 
+            super().__init__()
+            self.resize(650, 700)
+           #Report Title
+            self.setStyleSheet("font-size:13px;")
+            self.ReportTitleLabel= QLabel("Report Title")
+            self.ReportTitle=QLineEdit()
+            self.ReportTitleLayout= QHBoxLayout()
+            self.ReportTitleLayout.addWidget(self.ReportTitleLabel)
+            self.ReportTitleLayout.addWidget(self.ReportTitle)
+            
+           #Services
+            self.stageCheckDict={}  #Dict to with key as service checkbox and value as fee checkbox (or '' if no fee checkbox)
+            self.headerlist=[]
+            self.stageChecks= QVBoxLayout()
+            self.stageChecks.setSpacing(2)
+            for stage in ["MEP","Sustainability Consultancy","BREEAM","Embodied Carbon","Health and Wellbeing","Business Case","Heat Decarbonisation Works","Operational Carbon"]:
+                self.stageCheck= QCheckBox(text=stage)
+                self.stageRow=QHBoxLayout()
+                self.stageRow.addWidget(self.stageCheck)
+                self.stageCheck.stateChanged.connect(self.serviceCheckChanged)
+                if stage in ["MEP","Sustainability Consultancy"]:
+                    self.headerlist.append(stage)
+                    self.stageCheckDict[self.stageCheck]='' #No fee checkbox for MEP and Sustainability Consultancy
+                    self.stageChecks.addLayout(self.stageRow) #Add stage checkbox to stageChecks
+                    for self.substage in ["Feasibility","Stage 1", "Stage 2","Stage 3","Stage 4","Stage 5","Stage 6","Stage 7"]:
+                        self.substageCheck=QCheckBox(text=stage+" "+self.substage)
+                        self.stageFee= QDoubleSpinBox()
+                        self.stageFee.setGroupSeparatorShown(True)
+                        self.stageFee.setPrefix('£')
+                        self.stageFee.setMaximum(1000000000000)
+                        self.stageRow=QHBoxLayout()
+                        self.stageRow.addSpacing(30)
+                        self.stageRow.addWidget(self.substageCheck)
+                        self.stageCheckDict[self.substageCheck]=self.stageFee
+                        self.substageCheck.stateChanged.connect(self.serviceCheckChanged)
+                        self.substageCheck.setEnabled(False)
+                        self.stageFee.setEnabled(False)
+                        self.stageRow.addStretch(1)
+                        self.stageRow.addWidget(self.stageFee)
+                        self.stageChecks.addLayout(self.stageRow)
+                else:
+                    self.stageFee= QDoubleSpinBox()
+                    self.stageFee.setPrefix('£')
+                    self.stageFee.setMaximum(1000000000000)
+                    self.stageCheckDict[self.stageCheck]=self.stageFee
+                    self.stageFee.setEnabled(False)
+                    self.stageRow.addStretch(1)
+                    self.stageRow.addSpacing(200)
+                    self.stageRow.addWidget(self.stageFee)
+                    self.stageChecks.addLayout(self.stageRow)
+            self.checkedlist=[]
+           
+           #Frameworks
+            self.frameworkCheckList=[]
+            self.frameworkChecks= QVBoxLayout()
+            self.frameworkChecks.setSpacing(2)
+            for framework in ["Framework A","Framework B","Framework C","Framework D","Framework E","Framework F","RCDC Custom Framework"]:
+                self.frameworkCheck= QCheckBox(text=framework)
+                self.frameworkChecks.addWidget(self.frameworkCheck)
+                self.frameworkCheckList.append(self.frameworkCheck)
+           #Issue Date
+            self.IssueDate=QLabel('Issue Date',self)
+            self.IssueDateEdit=QDateEdit(self)
+            self.IssueDateEdit.setDate(QDate.currentDate())
+            self.IssueDateEdit.setDisplayFormat("yyyy/MM/dd")
+            self.IssueLayout=QHBoxLayout()
+            self.IssueLayout.addWidget(self.IssueDate)
+            self.IssueLayout.addWidget(self.IssueDateEdit)
+
+           #Groupbox layout
+            # self.Services=QGroupBox("Service(s)")
+            # self.Services.setStyleSheet("""QGroupBox{ font: 13px;  font-weight: bold; border:1px solid rgba(0, 0, 0, .3); opacity:0.4; margin-top: 0.8em;} 
+            #                                 QGroupBox::title {top: -10px;left: 10px;}""")
+            # self.Services.setLayout(self.stageChecks)
+            servicescroll=QScrollArea()
+            servicescroll.setWidgetResizable(True)
+            servicescroll.setWidget(QWidget())
+            servicescroll.widget().setLayout(self.stageChecks)
+            self.Frameworks=QGroupBox("Fee Chart Framework:")
+            self.Frameworks.setStyleSheet("""QGroupBox{ font-size: 13px;  font-weight: bold; border:1px solid rgba(0, 0, 0, .3); opacity:0.4; margin-top: 0.8em;} 
+                                            QGroupBox::title {top: -10px;left: 10px;}""")
+            self.Frameworks.setLayout(self.frameworkChecks)
+
+           #Final layouts
+            self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            mainLayout = QVBoxLayout()
+            
+            serviceLabel=QLabel("Service(s):")
+            serviceLabel.setStyleSheet("font-weight:bold;")
+            mainLayout.addWidget(serviceLabel)
+            mainLayout.addWidget(servicescroll)
+            mainLayout.addWidget(self.Frameworks)
+            mainLayout.addLayout(self.IssueLayout)
+            mainLayout.addLayout(self.ReportTitleLayout)
+            mainLayout.addWidget(self.buttonBox)
+            mainLayout.setSpacing(10)
+
+            # self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+            self.setLayout(mainLayout)
+            self.setWindowTitle("New Fee Proposal")
+            self.installEventFilter(self)
+                                    
+            self.buttonBox.accepted.connect(self.funcOK)
+            self.buttonBox.rejected.connect(self.reject)
+            # self.Services.setStyleSheet("padding-left:10px;")
+            # self.setStyleSheet("background:#F3F3F3;color:#0455BF; ")
+            # self.ReportTitle.setStyleSheet("background:white; border;1px solid black;")
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            newfeesproposaldialog.close()
+
+    def eventFilter(self, source, event):
+        try:
+            if event.type() == QEvent.EnterWhatsThisMode:
+                QWhatsThis.leaveWhatsThisMode()
+                with open(help_json, 'r') as f:
+                    self.data=json_load(f)
+                # event.ignore()
+                MsgBox(self.data["New Fee Proposal"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
+                return True
+            return super().eventFilter(source, event)
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def closeEvent(self,event): #Added to clear event because of question mark button weirdness
+        try:
+            self.removeEventFilter(self)
+            super(NewFeesProposal_Dialog,self).closeEvent(event)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def serviceCheckChanged(self):
+        try:
+            self.checkedlist=[] #holds list of all checked stages
+            self.headerlist=list(filter(lambda i:self.stageCheckDict[i]=='',self.stageCheckDict)) #list of all stages with no fee checkbox
+            for i in self.stageCheckDict: #loop through all stage checkboxes
+                if self.stageCheckDict[i]=='': #if stage checkbox has no fee checkbox
+                    for j in self.stageCheckDict: #loop through all stage checkboxes and enable subs if checked
+                        if j.text()[:len(i.text())+1]==i.text()+" ": #if substage checkbox is found (i.e. if substage starts with stage name)
+                            j.setEnabled(i.isChecked()) #enable/disable substage checkbox
+                            if i.isChecked()==False: j.setChecked(False) #if stage is unchecked, uncheck all substages
+                            self.stageCheckDict[j].setEnabled(i.isChecked()) #enable/disable fee checkbox
+                else:
+                    self.stageCheckDict[i].setEnabled(i.isChecked())#fee box enabling
+                    if i.isChecked(): self.checkedlist.append(i) #if stage is checked, add to checkedlist
+            #getting needed title from the superstages name
+            self.titleList=list(map(lambda i: i.text(),self.checkedlist))#get object text from all ticked checkboxes
+            if self.titleList!= []:
+                for i in self.headerlist: #running loop to change stage name to superstage name
+                    for j in range(len(self.titleList)):
+                        if self.titleList[j][:len(i.text())+1]==i.text()+" ":
+                            self.titleList[j]=i.text()
+                self.titleList= list(dict.fromkeys(self.titleList)) #removing duplicate items from list
+                if "Sustainability Consultancy" in self.titleList: self.titleList[self.titleList.index("Sustainability Consultancy")]="Sustainability" 
+                if len(self.titleList)==1:
+                    self.title=self.titleList[0]
+                    self.ReportTitle.setText("RCDC_"+ThisProject_client+" - "+ThisProject_name+" "+self.title +" Fee Proposal")
+                elif len(self.titleList)==2:
+                    self.title=self.titleList[0]+" and "+self.titleList[1] 
+                    self.ReportTitle.setText("RCDC_"+ThisProject_client+" - "+ThisProject_name+" "+self.title+" Fee Proposal")
+                elif len(self.titleList)>2:
+                    self.title=', '.join(self.titleList[:-1])+" and " + self.titleList[-1]
+                    self.ReportTitle.setText("RCDC_"+ThisProject_client+" - "+ThisProject_name+" "+self.title +" Fee Proposal")
+            else:
+                self.ReportTitle.setText('')
+            # self.ReportTitle.setText(self.titleList[0])
+
+            #hidding subcheckboxes
+            # for i in self.stageCheckDict:
+            #     if self.stageCheckDict[i]=='':
+            #         for j in self.stageCheckDict:
+            #             if j.text()[:len(i.text())+1]==i.text()+" ":
+            #                 j.setHidden(not(i.isChecked()))
+        
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def funcOK(self):
+        try:
+            if self.ReportTitle.text()!= '' and self.checkedlist!= [] : #if title box not empty and stages are checked
+                if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal'):
+                    if path.exists(ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+'.docx')==False:
+                        if path.exists(FeeProposalTemp)==True:
+                            if len(ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+'.docx')<=259:
+                                self.ThisClientLogo=""
+                                proceed=""
+                                for file in listdir(ClientsLogos):# check if client has logo
+                                    if file.rsplit('.',1)[0]==ThisProject_client:
+                                        self.ThisClientLogo=ClientsLogos+'\\'+file
+                                        proceed="Yes"
+                                        break
+                                else:
+                                    qm = QMessageBox
+                                    ret = qm.question(self,"Note: Client logo not found","Logo for Client: '" +ThisProject_client+"' was not found\n This can be added in the Admin \n Would you like to proceed without the logo?", qm.Yes | qm.No )
+                                    if ret == qm.Yes:
+                                        proceed="Yes"
+                                if proceed=="Yes":
+                                    doc=docx.Document(FeeProposalTemp) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
+                                    self.allSections= []
+                                    self.validSections=[]
+                                    for i in self.stageCheckDict: #for all checkboxes
+                                        if self.stageCheckDict[i]!='':  #if checkbox isn't a header  
+                                            self.allSections.append(i.text())  # add full text
+                                            if i.isChecked(): # if it's checked
+                                                self.validSections.append(i.text()) # add full text
+                                            for j in self.headerlist: 
+                                                if i.text()[:len(j.text())+1]==j.text()+" ":# if it's a stage
+                                                    self.allSections.append(j.text()) 
+                                                    self.allSections.append(i.text().replace(j.text()+" ",""))
+                                                    if i.isChecked():
+                                                        self.validSections.append(j.text())
+                                                        self.validSections.append(i.text().replace(j.text()+" ",""))
+                                                    break
+                                    self.allSections=list((dict.fromkeys(self.allSections)))
+                                    self.validSections=list((dict.fromkeys(self.validSections)))
+
+                                    for par in doc.paragraphs:
+                                        if 'PROJECTSERVICE' in par.text:
+                                            replaceRunInParagraph(par, 'PROJECTSERVICE', self.title)
+                                        if 'PROJECTNAME' in par.text:
+                                            replaceRunInParagraph(par, "PROJECTNAME", ThisProject_name)
+                                        if 'REPORTDATE' in par.text:
+                                            replaceRunInParagraph(par,'REPORTDATE', f"Date: {datetime.strptime(self.IssueDateEdit.text(),'%Y/%m/%d').strftime('%d/%m/%Y')}")
+                                        if 'CLIENTNAME' in par.text:
+                                            replaceRunInParagraph(par,'CLIENTNAME', ThisProject_client)
+                                        if 'CLIENTLOGO' in par.text and self.ThisClientLogo!="":
+                                            par.text =""
+                                            r=par.add_run()
+                                            try:
+                                                #Check logo size and resize if too big
+                                                img=Image.open(self.ThisClientLogo)
+                                                #Get the size in inches
+                                                width, height = img.size
+                                                width = width/96
+                                                height = height/96
+                                                # print(width,height)
+                                                if width>3.5 or height>1.5:    
+                                                    #reduce size by 10% until it fits
+                                                    while width>3.5 or height>1.5:
+                                                        width=width*0.9
+                                                        height=height*0.9
+                                                        print(width,height)
+                                                    r.add_picture(self.ThisClientLogo,width=Inches(width), height=Inches(height))
+                                                else:
+                                                    r.add_picture(self.ThisClientLogo)
+                                            except ZeroDivisionError:
+                                                r.add_picture(self.ThisClientLogo,width=Inches(1.822835), height=Inches(0.9409449))
+                                            except docx.image.exceptions.UnrecognizedImageError:
+                                                MsgBox("The image file for the logo is not supported\nIt's possible that the size of the image is too big, try compressing this image",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                                            
+                                        # if '[PROJECT AMOUNT]' in par.text:
+                                        #     inline = par.runs
+                                        #     for i in range(len(inline)):
+                                                # if '[PROJECT AMOUNT]' in inline[i].text:
+                                                #     text = inline[i].text.replace('[PROJECT AMOUNT]', self.ReportTitle.text())
+                                                #     inline[i].text = text
+                                        if '[SERVICE (stage inclusive)]' in par.text:
+                                            for serv in self.checkedlist:
+                                                newpar =par.insert_paragraph_before(serv.text() + ' - ## weeks')
+                                                newpar.alignment= 1
+                                            par.clear()
+                                        
+                                        for serv in self.allSections:
+                                            if (serv not in self.validSections) and '['+serv+']' == par.text:
+                                                cur_index = list(map(lambda x: x.text, doc.paragraphs)).index(par.text)
+                                                while True: 
+                                                    cur_par=doc.paragraphs[cur_index]
+                                                    p = cur_par._element
+                                                    p.getparent().remove(p)
+                                                    p._p = p._element = None
+                                                    if '[END]' == cur_par.text:
+                                                        break
+                                            elif '['+serv+']' == par.text or ('[END]' in par.text and par._element.getparent()!=None):
+                                                p = par._element
+                                                p.getparent().remove(p)
+                                                p._p = p._element = None
+                                    
+                                    #     elif par.text== "ProjectClient":
+                                    #         par.text=""
+                                    #         r= par.add_run()
+                                    #         #if there is logo in the DropLogoLabel the logo is added to the paragragh where you have Client
+                                    #         #The logo is set as the Tooltip of the image in the label( the tooltips has been set as the path to the logo)
+                                    #         if self.DropLogolabel.pixmap()!=None and self.DropLogolabel.toolTip()!='':
+                                    #             r.add_picture(self.DropLogolabel.toolTip(), width=Inches(1.822835), height=Inches(0.9409449))#the width and height is set
+                                    #     elif "ProjectClient" in par.text:
+                                    #         for run in par.runs:
+                                    #             if "ProjectClient"  in run.text:
+                                    #                 run.text= run.text.replace("ProjectClient",ThisProject_client)
+                                    #         # par.text= par.text.replace("ProjectClient",ThisProject_client)
+                                    #tables
+                                    for table in doc.tables:
+                                        if table.cell(0,0).text=='Type of building' and table.cell(0,1).text=='{BUILDING TYPE}':
+                                            if 'BREEAM' not in self.validSections:
+                                                table._element.getparent().remove(table._element)
+                                        elif table.cell(0,0).text=='Stage' and table.cell(0,1).text=='Fees':
+                                            rowno=2
+                                            for serv in self.checkedlist:
+                                                newrow = table.add_row()
+                                                table.cell(rowno, 0).text=serv.text() #Add stage in new row
+                                                table.cell(rowno, 1).text=self.stageCheckDict[serv].text() #Fee 
+                                                for i in table.row_cells(rowno): #align the row
+                                                    i.vertical_alignment=1
+                                                    for j in i.paragraphs: j.alignment=1
+                                                newrow.height= docx.shared.Cm(1.05) #set row height
+                                                rowno+=1
+                                            for row in range(len([i for i in table.rows])): #total row
+                                                if table.cell(row,0).text=='TOTAL':
+                                                    self.total=0
+                                                    for serv in self.checkedlist: self.total +=self.stageCheckDict[serv].value() 
+                                                    table.cell(row,1).text= '£'+str(self.total)+'0'
+                                                    table.cell(row,1).paragraphs[0].runs[0].font.bold=True
+                                                    for i in table.row_cells(row): #align the row
+                                                        i.vertical_alignment=1
+                                                        for j in i.paragraphs: j.alignment=1
+                                                    table.rows[-1]._tr.addnext(table.rows[row]._tr)
+                                                    break
+                                        elif table.cell(0,0).text=='Discipline' and table.cell(0,1).text=='Discipline':
+                                            tbl=table
+                                            for frame in self.frameworkCheckList:
+                                                if frame.isChecked():
+                                                    p=paragraph.Paragraph(tbl._tbl.getnext(),tbl._parent).insert_paragraph_before("\n") #add paragraph after table
+                                                    p_font=p.add_run(frame.text()).font
+                                                    p_font.name='Gill Sans Nova'
+                                                    p_font.size=Pt(9)
+                                                    p_font.italic=True
+                                                    p_font.color.rgb= RGBColor(0x44, 0x54, 0x6A)
+                                                    tbl=deepcopy(tbl._tbl)
+                                                    p._p.addnext(tbl)
+                                                    tbl=[tb  for tb in [t for t in doc.tables] if tb._tbl==tbl][0]
+                                            table._element.getparent().remove(table._element)
+
+                                    # #footer
+                                    for section in doc.sections:
+                                        for par in section.footer.paragraphs:
+                                            if "PROJECTNAME" in par.text:
+                                                replaceRunInParagraph(par,"PROJECTNAME", ThisProject_name)
+                                            if "PROJECTSERVICE" in par.text:
+                                                replaceRunInParagraph(par,"PROJECTSERVICE", self.title)
+                                    doc.save(ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+'.docx') # save the file
+                                    startfile(ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+'.docx')# open the file
+                                        
+                                    # #Go back to the main window after refreshing with new report
+                                    newfeesproposaldialog.close()
+                                    feesandfinanceswindow.feeProposalWidget.refreshTable()
+                                    msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
+                                    msg.exec_()
+                            else:
+                                MsgBox("The report name is too long\nReduce "+ str(len(self.ReportTitle.text())-(259 - len(ProjectFinanceFolder+'\\3 Fee Proposal\\.docx')) )+" characters",setWindowTitle="Error: Report Name too long", setIcon = QMessageBox.Critical)
+                        else:
+                            MsgBox("The path " +FeeProposalTemp+" was not found",setWindowTitle="Error: Template file missing", setIcon = QMessageBox.Critical)
+                    else:
+                        MsgBox("The path "+ ProjectFinanceFolder+'\\3 Fee Proposal\\'+self.ReportTitle.text()+".docx already exists",setWindowTitle="Error: File already exists", setIcon = QMessageBox.Critical)
+                else:
+                    MsgBox("The path '"+ ProjectFinanceFolder+"\\3 Fee Proposal' can't be found\nThis is needed to store the report",setWindowTitle="Error: Fee Proposal folder missing", setIcon = QMessageBox.Critical)
+            else:
+                MsgBox("The report title cannot be empty and atleast a valid service must be checked",setWindowTitle="Can't proceed", setIcon = QMessageBox.Information)
+        
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            newfeesproposaldialog.close()
 
 class CalculationsWindow(QMainWindow):
     def __init__(self):
@@ -9635,1699 +11870,161 @@ class IssueRev_Dialog(QDialog):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-class ReportsPresMemosWindow(QMainWindow):
+class ProjectResourceWindow(QMainWindow):
     def __init__(self):
         try:
             super().__init__()
-          #New Drawing/Sketch Button
-            self.NewReportsButton = QToolButton()
-            self.NewReportsButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.NewReportsButton.setText("New")
-            self.NewReportsButton.setIcon(QIcon(newaction_icon))
-            self.NewReportsButton.setStyleSheet("""QToolButton{border:0.5px;
-            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            # self.NewReportsButton.setGeometry(QRect(40, 63,70, 70))
-            self.NewReportsButton.setIconSize(QSize(75, 42))
-            menu=QMenu()
-            self.NewReportsButton.setMenu(menu)
-            self.NewReportsButton.setPopupMode(QToolButton.InstantPopup) #Set popup mode of the button drop down
-            self.reportsaction=menu.addAction("Report") # button drop down actions
-            self.presentationaction=menu.addAction("Presentation") # button drop down actions
-            self.memosaction=menu.addAction("Memo")
-            self.reportsaction.triggered.connect(self.NewReportsClicked)
+            self.RefreshButton = ToolButton(" Refresh ", icon=refresh_icon, icon_width=40, icon_height=35, clicked=self.refreshResourceWindow)
+
+            self.rscManager=ResourceManager(include_toolbuttons=True, include_period=True,include_table=True, include_chart=True, refreshResources=self.refreshResourceWindow, project=f"{ThisProject_no} - {ThisProject_name}")
+            # self.periodAllRadioButton.click()
+
+            #Fees layout
+            feesLayout=QVBoxLayout()
+            for label in ["Fee for stage", "Resourced Fee", "Fee already spent", "Current Profit/Loss for Stage"]:
+                label=QLabel(label)
+                displaylabel=QLabel()
+                displaylabel.setFixedSize(300,25)
+                displaylabel.setStyleSheet("background:#fcfcfc; padding: 6px; color: #adadad;")
+                feesLayout.addWidget(label)
+                feesLayout.addWidget(displaylabel)
+                feesLayout.addStretch(1)
+            feesLayout.addStretch(10)
+
+            # projectTeamTable=ProjectTeamTable()
 
-            # self.sketchaction.triggered.connect(self.NewSketchesClicked)
-
-          #Refresh button
-            self.RefreshButton = QToolButton()
-            self.RefreshButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.RefreshButton.setText(" Refresh ")
-            self.RefreshButton.setIcon(QIcon(refresh_icon))
-            self.RefreshButton.setStyleSheet("""QToolButton{border:0.5px;
-            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            self.RefreshButton.setIconSize(QSize(45, 35))
-            self.RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
-            QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
-          
-          #Help button
-            self.HelpButton = QToolButton()
-            # self.HelpButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.HelpButton.setText(" ? ")
-            # self.HelpButton.setIcon(QIcon(refresh_icon))
-            # self.HelpButton.setStyleSheet("""QToolButton{border:0.5px;
-            # border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            # background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            # self.HelpButton.setIconSize(QSize(45, 35))
-            self.HelpButton.clicked.connect(self.HelpClicked)#Connecting the button to its function when clicked
-
-          #Project Label
-            currentProjectLabel= QLabel("Reports, Presentations & Memos:    " +ThisProject_foldername)
-            currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
-            # currentProjectLabel.setGeometry(QRect(450, 70, 290,40))
-
-          #Reports Table
-            self.ReportsTable = QTableWidget(1,3)
-            # self.ReportsTable.setGeometry(QRect(10, 160, 620, 751))
-            #Drawings Table Headear
-            self.ReportsTable.setHorizontalHeaderLabels(["Reports Number","Reports Name",""])
-            self.Reports_search=QLineEdit()
-            self.Reports_search.setPlaceholderText("Search")
-            self.Reports_search.textChanged.connect(lambda: self.filter_search(self.ReportsTable,self.Reports_search))
-           
-          #Presentations Table
-            self.PresentationsTable = QTableWidget(1,1)
-            # self.PresentationsTable.itemSelectionChanged.connect(lambda: self.selection_changed())
-            # self.PresentationsTable.itemDoubleClicked.connect(lambda: self.openfile(self.PresentationsTable,'5 Presentations'))
-            # self.PresentationsTable.setGeometry(QRect(640, 160, 620, 751))
-    
-            self.PresentationsTable.setHorizontalHeaderLabels(["Presentations"])
-          #Memos Table
-            self.MemosTable = QTableWidget(1,1)
-            # self.MemosTable.itemSelectionChanged.connect(lambda: self.selection_changed())
-            # self.MemosTable.itemDoubleClicked.connect(lambda: self.openfile(self.MemosTable,'0 Sketches'))
-            # self.MemosTable.setGeometry(QRect(1270, 160, 620, 751))
-
-            self.MemosTable.setHorizontalHeaderLabels(["Memos"])
-
-           
-            global ReportSeqNoDict
-            ReportSeqNoDict = {}
-          #Get reports
-            if path.exists(Project_Database):
-                QShortcut(QKeySequence('Ctrl+R'),self).activated.connect(self.NewReportsClicked)
-                QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.ReportsTable))
-
-                self.ReportsTable.itemDoubleClicked.connect(lambda: self.openfile(self.ReportsTable))
-                self.ReportsTable.installEventFilter(self)
-
-                self.previousReportName=None
-                QShortcut(QKeySequence('F2'),self).activated.connect(lambda: self.renamefile(self.ReportsTable))
-                con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
-                conn = pyodbc_connect(con_string)
-                cursor =conn.cursor()            
-                cursor.execute("SELECT * FROM {}".format('Reports'))
-                data= cursor.fetchall()
-                self.ReportsTable.setRowCount(len(data))
-                for d in range(len(data)):
-                    self.ReportsTable.setItem(d,0, QTableWidgetItem(data[d].PreName))
-                    self.ReportsTable.setItem(d,1, QTableWidgetItem(data[d].PostName))
-                    #Populate Sequential no Dictionary 
-                    if data[d].Ref in ReportSeqNoDict:
-                        if int(data[d].SeqNo) > ReportSeqNoDict[data[d].Ref]:
-                            ReportSeqNoDict[data[d].Ref]= int(data[d].SeqNo)
-                    else:
-                        ReportSeqNoDict[data[d].Ref]= int(data[d].SeqNo)
-                cursor.close()
-                conn.close()
-                self.ReportsTable.cellChanged.connect(self.fileRenamed)
-            else:
-                self.ReportsTable.setRowCount(1)
-                self.ReportsTable.setItem(0, 0,QTableWidgetItem("No PROJECT ADMIN DATABASE found"))
-                self.NewReportsButton.setEnabled(False)
-                self.ReportsTable.item(0,0).setBackground(QColor("#EE1111"))
-                self.ReportsTable.horizontalHeader().setVisible(False)
-                self.MemosTable.setVisible(False)
-                self.PresentationsTable.setVisible(False)
-            #Table header expansion   
-            header = self.ReportsTable.horizontalHeader()       
-            header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-            header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-            colsizelist=[self.ReportsTable.horizontalHeader().sectionSize(0),self.ReportsTable.horizontalHeader().sectionSize(1),self.ReportsTable.horizontalHeader().sectionSize(2)]
-            self.ReportsTable.setSelectionBehavior(1)
-            #Table expansion
-            for i in range(3):
-                header.setSectionResizeMode(i, QHeaderView.Interactive)
-                self.ReportsTable.setColumnWidth(i,colsizelist[i]+60)
-            self.ReportsTable.setShowGrid(False)
-            self.ReportsTable.verticalHeader().setVisible(False)
-            
-
-          #Page formats
-            self.OptionsLayout=QGridLayout()
-            self.OptionsLayout.addWidget(self.NewReportsButton,0,0)
-            self.OptionsLayout.addWidget(self.RefreshButton,0,1)
-            self.OptionsLayout.addWidget(self.HelpButton,0,2)
-            self.OptionsLayout.setHorizontalSpacing(30)
-            TopLayout=QHBoxLayout()
-            TopLayout.addStretch(1)
-            TopLayout.addLayout(self.OptionsLayout)
-            TopLayout.addStretch(18)
-            TopLayout.addWidget(currentProjectLabel)
-            TopLayout.addStretch(30)
-            ReportsLayout=QVBoxLayout()
-            ReportsLayout.addWidget(self.Reports_search)
-            ReportsLayout.addWidget(self.ReportsTable)
-            PresentationsLayout=QVBoxLayout()
-            PresentationsLayout.addWidget(self.PresentationsTable)
-            MemosLayout=QVBoxLayout()
-            MemosLayout.addWidget(self.MemosTable)
-
-            MainLayout= QHBoxLayout()
-            MainLayout.addLayout(ReportsLayout)
-            MainLayout.addLayout(PresentationsLayout)
-            MainLayout.addLayout(MemosLayout)
-            FullLayout=QVBoxLayout()
-            FullLayout.addLayout(TopLayout)
-            FullLayout.addLayout(MainLayout) 
-
-            Page =QWidget()
-            Page.setLayout(FullLayout)
-            self.setCentralWidget(Page)
-            menuBar = self.menuBar()
-            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
-            backMenu= QAction(icon=QIcon(back_icon), parent= self)
-            menuBar.addAction(backMenu)
-            menuBar.addAction(homeMenu)
-            homeMenu.triggered.connect(self.homeAction)
-            backMenu.triggered.connect(self.backAction)
-            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
-
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            menuBar = self.menuBar()
-            icon = QIcon()
-            icon.addPixmap(QPixmap(home_icon))
-            homeMenu = QAction(icon=icon,parent= self.widget)
-            menuBar.addAction(homeMenu)
-            homeMenu.triggered.connect(self.homeAction)
-    
-    def eventFilter(self, source, event): 
-        try:
-            if event.type() == QEvent.ContextMenu and source in [self.ReportsTable]:
-                selectedrows = [i.row() for i in source.selectionModel().selectedRows(0) if (source.isRowHidden(i.row())==False)]
-                if len(selectedrows)>0:
-                    menu = QMenu(self)
-                    menu.addAction("Open", lambda: self.openfile(source))
-                    if len(selectedrows)==1:   menu.addAction("Rename", lambda: self.renamefile(source))
-                    menu.addAction("Delete", lambda: self.delete(source))
-                    menu.exec_(event.globalPos())
-                    return True
-            return super().eventFilter(source, event)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def filter_search(self, tableobj, editbox):
-        try:
-            if editbox.text()=='' or  (tableobj.item(0,0)!=None and tableobj.item(0,0).text()=="No PROJECT ADMIN DATABASE found"):
-                for i in range(tableobj.rowCount()): tableobj.setRowHidden(i,False)
-            else:
-                for i in range(tableobj.rowCount()): tableobj.setRowHidden(i,True)
-                for i in range(tableobj.rowCount()):
-                    for j in range(tableobj.columnCount()):
-                        if tableobj.item(i,j) !=None and editbox.text().lower() in tableobj.item(i,j).text().lower():
-                            tableobj.setRowHidden(i, False) 
-                            break
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def delete(self, tableobj):
-        try:
-            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
-            tableobj.clearSelection()
-            selection=QItemSelection()
-            for i in self.selectionindexes:
-                selection.select(tableobj.model().index(i,0),tableobj.model().index(i,2))
-            mode = QItemSelectionModel.Select | QItemSelectionModel.Rows
-            tableobj.selectionModel().select(selection, mode)
-            if len(self.selectionindexes):
-                qm=QMessageBox()
-                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete these " + str(len(self.selectionindexes)) + " item(s)?", qm.Yes | qm.No)
-                if ret == qm.Yes:
-                    if tableobj == self.ReportsTable:
-                        subfolderstr= '4 Reports'
-                        tbl='Reports'
-                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
-                    conn = pyodbc_connect(con_string)
-                    cursor =conn.cursor()            
-                    for i in self.selectionindexes:
-                        cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = '"+ str(tableobj.item(i, 0).text()) + "' AND PostName = '"+ str(tableobj.item(i, 1).text()) + "')")
-                        if path.exists(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx"):
-                            while True:
-                                try:
-                                    #Delete file 
-                                    remove(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx")
-                                    break
-                                except IOError:
-                                    #If there's error while opening the file, tell user to close the file to continue
-                                    MsgBox("Please make sure the "+ Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
-                        else:
-                            MsgBox(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
-                    widget.removeWidget(reportswindow)
-                    reportswindow.__init__()
-                    widget.addWidget(reportswindow) 
-                    widget.setCurrentWidget(reportswindow)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def NewReportsClicked(self):
-        try:
-            global newreportdialog
-            newreportdialog=NewReport_Dialog()
-            newreportdialog.exec()
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def openfile(self, tableobj):
-        try:
-            if tableobj == self.ReportsTable:
-                subfolderstr= '4 Reports'
-
-            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
-            tableobj.clearSelection()
-            selection=QItemSelection()
-            for i in self.selectionindexes:
-                selection.select(tableobj.model().index(i,0),tableobj.model().index(i,2))
-            mode = QItemSelectionModel.Select | QItemSelectionModel.Rows
-            tableobj.selectionModel().select(selection, mode)
-            for i in self.selectionindexes:
-                if path.exists(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx"):
-                    Popen([ Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx"],shell=True)
-                else:
-                    MsgBox(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def renamefile(self, tableobj):
-        try:
-            if tableobj == self.ReportsTable:
-                selectedrows = [i.row() for i in tableobj.selectionModel().selectedRows(0) if tableobj.isRowHidden(i.row())==False]
-                if len(selectedrows)==1:
-                    row=selectedrows[0]
-                    #allow user to edit the cell
-                    #dynamically allow user to edit the cell
-                    # tableobj.setEditTriggers(QAbstractItemView.AllEditTriggers)
-                    self.previousReportName=tableobj.item(row,1).text()
-                    tableobj.editItem(tableobj.item(row,1))
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-   
-    def fileRenamed(self, row, col):
-        try:
-            reportRef=self.ReportsTable.item(row,0).text()
-            newReportName=self.ReportsTable.item(row,1).text()
-            if newReportName:
-                if newReportName!=self.previousReportName:
-                    oldfullpath=ProjectReportFolder+'\\'+reportRef+ " - "+self.previousReportName+".docx"
-                    newfullpath=ProjectReportFolder+'\\'+reportRef+ " - "+newReportName+".docx"
-                    #Update the database
-                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
-                    conn = pyodbc_connect(con_string)
-                    cursor =conn.cursor()   #Update the project details  
-                    values= (newReportName, reportRef+" - "+self.previousReportName)               
-                    cursor.execute("UPDATE Reports SET PostName= ? WHERE FullName= ?", values )
-                    conn.commit()#Save the changes
-                    cursor.close()
-                    conn.close()#Close cursor and connection
-                    #Rename the file and edit the file
-                    if path.exists(oldfullpath):
-                        while True:
-                            try:
-                                rename(oldfullpath, newfullpath)
-                                doc=docx.Document(newfullpath)
-                                for par in doc.paragraphs:
-                                    if self.previousReportName in par.text:
-                                        replaceRunInParagraph(par,self.previousReportName,newReportName)
-                                for table in doc.tables:
-                                    for row in table.rows:
-                                        for cell in row.cells:  
-                                            if cell.text=="Report Title":
-                                                row.cells[1].text=newReportName
-                                for section in doc.sections:
-                                    for par in section.footer.paragraphs:
-                                        if self.previousReportName in par.text:
-                                            replaceRunInParagraph(par,self.previousReportName,newReportName)
-                                doc.save(newfullpath)
-                                break
-                            except IOError:
-                                MsgBox("Please make sure the "+oldfullpath+" isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
-            else:
-                self.ReportsTable.item(row,1).setText(self.previousReportName)
-            self.previousReportName=None
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def RefreshClicked(self):
-        try:
-            widget.removeWidget(reportswindow)
-            reportswindow.__init__()
-            widget.addWidget(reportswindow)
-            widget.setCurrentWidget(reportswindow)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def HelpClicked(self):
-        try:
-            with open(help_json, 'r') as f:
-                self.data=json_load(f)
-            MsgBox(self.data["Reports Presentations and Memos"], setWindowTitle="Help", setStyleSheet='QMessageBox {background-color: #f8f8fb; color: white;}')
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-        
-    def backAction(self):
-        try:
-            widget.setCurrentWidget(projectwindow)
-            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def homeAction(self):
-        try:
-            widget.setCurrentWidget(initwindow)
-            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class NewReport_Dialog(QDialog):
-    def __init__(self):
-        try:
-            super(NewReport_Dialog,self).__init__()
-            # self.resize(500,500) #Window width and height
-          #Check if this project three-letter code has been set, and give error msg if not
-            if project3name_dict[ThisProject_foldername] =='XXX':
-                MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            
-          #Create Dropdowns and fill them
-            self.ReportTitleEdit= QLineEdit(self)
-            # self.ReportTitleEdit.setEditable(True)
-            self.TypeListBox= QComboBox(self)
-            self.TypeListBox.addItems(['Stage 2', 'Stage 3', 'Stage 4', 'CEAP Business case', 'Embodied carbon', 'Feasibility', 'Utilities', 'Site Visit Report', 'Other'])
-            # self.TypeListBox.setEditable(True)
-
-            self.RoleListBox= QComboBox(self)
-            for i in DrawNamingDict['Role']:
-                self.RoleListBox.addItem(i,DrawNamingDict['Role'][i])
-                
-            self.A3RadioBut= QRadioButton("A3")
-            self.A4RadioBut= QRadioButton("A4")
-            self.A4RadioBut.setChecked(True)
-            self.RadioButLayout=QHBoxLayout()
-            self.RadioButLayout.addWidget(self.A3RadioBut)
-            self.RadioButLayout.addWidget(self.A4RadioBut)
-            self.RadioButLayout.addStretch()
-          #Arrange the window layout
-            self.grid= QGridLayout()
-            #self.grid.addWidget(QLineEdit())
-            self.grid.addWidget(QLabel('Report Title:'), 0,0)
-            self.grid.addWidget(self.ReportTitleEdit, 0,1)
-            self.grid.addWidget(QLabel('Type:'), 1,0)
-            self.grid.addWidget(self.TypeListBox, 1,1)
-            self.grid.addWidget(QLabel('Role:'), 2,0)
-            self.grid.addWidget(self.RoleListBox, 2,1)
-            self.grid.addWidget(QLabel('Paper size:'), 3,0)
-            self.grid.addLayout(self.RadioButLayout, 3,1)
-
-            
-            self.grid.setVerticalSpacing(30) #spacing between the widgets
-            self.grid.setHorizontalSpacing(30)
-            self.gridGroupBox = QGroupBox()
-            self.gridGroupBox.setLayout(self.grid) 
-            
-            self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            
-            self.nameLayout= QHBoxLayout()
-            self.editNameButton= QPushButton("Edit Name")
-            
-            # self.nameBox = QLineEdit()
-            # self.nameBox.setEnabled(False)
-            
-            # self.nameLayout.addWidget(self.editNameButton)
-            # self.nameLayout.addWidget(self.nameBox)
-            
-            self.FullNameBox= QLineEdit()
-            self.FullNameBox.setEnabled(False)
-
-            mainLayout = QVBoxLayout()
-            # mainLayout.addWidget(self.DropLogolabel)
-            # mainLayout.addWidget(self.LogosList)
-            mainLayout.addWidget(self.gridGroupBox)
-            # mainLayout.addLayout(self.nameLayout)
-            mainLayout.addWidget(self.FullNameBox)
-            mainLayout.addWidget(self.buttonBox)
-            mainLayout.setSpacing(30)
-
-            # mainLayout.setGeometry(QRect(140, 210, 451, 351))
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-            self.setLayout(mainLayout)
-            # self.setLayout(mainLayout)
-            self.setWindowTitle("New Report")
-                        
-            self.RoleListBox.currentIndexChanged.connect(self.RoleChanged)
-            self.RoleChanged(self.RoleListBox.currentIndex())
-            self.ReportTitleEdit.textChanged.connect(self.setNameBox)
-            
-            self.buttonBox.accepted.connect(self.funcOK)
-            self.buttonBox.rejected.connect(self.reject)
-            # self.editNameButton.clicked.connect(self.editNameButtonClicked)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            newreportdialog.close()
-
-    def RoleChanged(self, index):
-        try:
-            prev_type=self.TypeListBox.currentText()
-            self.TypeListBox.clear()
-            if self.RoleListBox.currentText()=='BREEAM':
-                self.TypeListBox.addItems(['Design Stage', 'Post Construction Stage', 'Other'])
-            else:
-                self.TypeListBox.addItems(['Stage 2', 'Stage 3', 'Stage 4', 'CEAP Business case', 'Embodied carbon', 'Feasibility', 'Utilities', 'Site Visit Report', 'Other'])
-            self.TypeListBox.setCurrentText(prev_type)
-            #set the report number without the last four digits(the seq no)
-            ribastage=RIBAstages[ThisProject_no+' - '+ ThisProject_name]
-            if ribastage=='': ribastage='XX'
-            self.prename = project3name_dict[ThisProject_foldername] + '-RCDC-'+ribastage+'-XX-RP-'+self.RoleListBox.currentData()
-            if self.prename in ReportSeqNoDict: #chech for the number in the report seqno dictionary
-                self.sequential_no = str(ReportSeqNoDict[self.prename]+1).zfill(4)
-            else:
-                self.sequential_no= '0001'
-            self.prename+='-'+self.sequential_no
-            self.setNameBox()
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def setNameBox(self):
-        try:
-            #set the fullname box with the full report name
-            self.FullNameBox.setText(self.prename + ' - '+str(self.ReportTitleEdit.text()))
-        # def ReportTitleChanged(self):
-        #     self.FullNameBox.setText(self.prename + ' - '+str(self.ReportTitleEdit.text()))
-        # def editNameButtonClicked(self):
-        #     self.nameBox.setEnabled(True)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def funcOK(self):
-        try:
-            if self.ReportTitleEdit.text()!= "":#If the title box isn't empty
-                if path.exists(Project_Database):
-                  #Add the new report into the project database if it is found and if the report folder for this project is found
-                    if path.exists(ProjectReportFolder):
-                        if path.exists(ProjectReportFolder+'\\'+self.FullNameBox.text()+'.docx')==False:
-                            if self.TypeListBox.currentText()=="Site Visit Report":
-                                self.ReportTemp=SiteVisitReportTemp
-                            # elif self.TypeListBox.currentText()=="Post Construction Stage":
-                            #     self.ReportTemp=BREEAMPostConstructionReportTemp
-                            else:
-                                if self.A3RadioBut.isChecked():
-                                    self.ReportTemp=A3ReportTemp
-                                else:
-                                    self.ReportTemp=A4ReportTemp
-                            if path.exists(self.ReportTemp):
-                                self.ThisClientLogo=""
-                                proceed=""
-                                for file in listdir(ClientsLogos):# check if client has logo
-                                    if file.rsplit('.',1)[0]==ThisProject_client:
-                                        self.ThisClientLogo=ClientsLogos+'\\'+file
-                                        proceed="Yes"
-                                        break
-                                else:
-                                    qm = QMessageBox
-                                    ret = qm.question(self,"Note: Client logo not found", "Logo for Client: '" +ThisProject_client+"' was not found\n This can be added in the Admin \n Would you like to proceed without the logo?", qm.Yes | qm.No )
-                                    if ret == qm.Yes:
-                                        proceed="Yes"
-                                if proceed=="Yes":
-                                    while True:
-                                        try:
-                                            # text.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-                                            doc=docx.Document(self.ReportTemp) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
-                                            break
-                                        except docx.opc.exceptions.PackageNotFoundError:
-                                            MsgBox("Please make sure '"+self.ReportTemp+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Template file open", setIcon = QMessageBox.Critical)
-
-                                    for par in doc.paragraphs:#Check for Report Title in the doc and replace with the title in the report title box
-                                        # if par.text=="[ReportTitle]":
-                                        #     par.add_run().font.size = Pt(48) #set font size
-                                        #     par.runs[0].text=self.ReportTitleEdit.text() #Replace text
-                                        # elif par.text=="[ProjectTitle]":##Similar to report title
-                                        #     par.add_run().font.size = Pt(24) 
-                                        #     par.runs[0].text=ThisProject_name
-                                        #     # par.text=ThisProject_name
-                                        # elif par.text=="[ProjectNo]":
-                                        #     par.add_run().font.size = Pt(24)
-                                        #     par.runs[0].text=ThisProject_no
-                                        # elif par.text=="[ReportDate]":
-                                        #     par.add_run().font.size = Pt(18) 
-                                        #     par.runs[0].text="Date: "+str(date.today().strftime("%d/%m/%y"))#set date in the formt
-                                        #     # par.runs[1].text=''
-                                        #     # par.runs[2].text=''
-                                        #     # par.text= "Date: "+str(date.today().strftime("%d/%m/%y"))
-                                        
-                                        if 'REPORTTITLE' in par.text:
-                                            replaceRunInParagraph(par,'REPORTTITLE',self.ReportTitleEdit.text())
-                                        elif 'PROJECTNAME' in par.text:
-                                            replaceRunInParagraph(par,'PROJECTNAME',ThisProject_name)
-                                        elif 'PROJECTNO' in par.text:
-                                            replaceRunInParagraph(par,'PROJECTNO',ThisProject_no)
-                                        elif 'REPORTDATE' in par.text:
-                                            replaceRunInParagraph(par,'REPORTDATE',f"Date: {str(date.today().strftime('%d/%m/%y'))}")
-                                        elif "CLIENTNAME" in par.text:
-                                            replaceRunInParagraph(par,'CLIENTNAME',ThisProject_client)
-                                        elif par.text== "CLIENTLOGO" and self.ThisClientLogo!="":
-                                            # pass
-                                            par.text =""
-                                            r=par.add_run()
-                                            try:
-                                                #Check logo size and resize if too big
-                                                img=Image.open(self.ThisClientLogo)
-                                                #Get the size in inches
-                                                width, height = img.size
-                                                width = width/96
-                                                height = height/96
-                                                # print(width,height)
-                                                if width>3.5 or height>1.5:    
-                                                    #reduce size by 10% until it fits
-                                                    while width>3.5 or height>1.5:
-                                                        width=width*0.9
-                                                        height=height*0.9
-                                                        # print(width,height)
-                                                    r.add_picture(self.ThisClientLogo,width=Inches(width), height=Inches(height))
-                                                else:
-                                                    r.add_picture(self.ThisClientLogo)
-                                            except ZeroDivisionError:
-                                                r.add_picture(self.ThisClientLogo,width=Inches(1.822835), height=Inches(0.9409449))
-                                            except docx.image.exceptions.UnrecognizedImageError:
-                                                MsgBox("The image file for the logo is not supported\nIt's possible that the size of the image is too big, try compressing this image",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-                                        
-                                    #tables
-                                    for table in doc.tables:
-                                        for row in table.rows:
-                                            for cell in row.cells:  
-                                                if cell.text=="Project Title":
-                                                    row.cells[1].text=ThisProject_name
-                                                elif cell.text=="Project Number":
-                                                    row.cells[1].text=ThisProject_no
-                                                elif cell.text=="Report Title":
-                                                    row.cells[1].text=self.ReportTitleEdit.text()
-                                                elif cell.text=="Report Reference":
-                                                    row.cells[1].text=self.prename
-                                    #footer
-                                    # for foot in range(0, len(doc.sections)):
-                                    #     #In the footers replace all texts 'Report name' with the report name set
-                                    #     doc.sections[foot].footer.paragraphs[0].text =doc.sections[foot].footer.paragraphs[0].text.replace('Report name', self.ReportTitleEdit.text())
-                                    for section in doc.sections:
-                                        for par in section.footer.paragraphs:
-                                            if 'REPORTTITLE' in par.text:
-                                                replaceRunInParagraph(par,'REPORTTITLE',self.ReportTitleEdit.text())
-                                               
-                                        
-                                    doc.save(ProjectReportFolder+'\\'+self.FullNameBox.text()+'.docx') # save the file
-                                    
-                                    #Record into database
-                                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';' #Connect to the project database
-                                    conn = pyodbc_connect(con_string)
-                                    cursor =conn.cursor()                    
-                                    values = (
-                                        (replace_last(self.prename, '-'+self.sequential_no, ''), self.sequential_no, str(self.ReportTitleEdit.text()))
-                                    )
-                                    cursor.execute("INSERT INTO Reports (Ref, SeqNo, PostName) VALUES (?,?,?)", values)
-                                    conn.commit()
-                                    cursor.close()
-                                    conn.close()#Save changes and close cursor and connection
-
-                                    startfile(ProjectReportFolder+'\\'+self.FullNameBox.text()+'.docx')# open the file
-                                        
-                                    #Go back to the main window after refreshing with new project
-                                    newreportdialog.close()
-                                    widget.removeWidget(reportswindow)
-                                    reportswindow.__init__()
-                                    widget.addWidget(reportswindow) 
-                                    widget.setCurrentWidget(reportswindow)
-                                    msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
-                                    msg.exec_()
-                            else:
-                                MsgBox("The path " +self.ReportTemp+" was not found",setWindowTitle="Error: Template file missing", setIcon = QMessageBox.Critical)
-                        else:
-                            MsgBox("The path "+ ProjectReportFolder+'\\'+self.FullNameBox.text()+".docx already exists",setWindowTitle="Error: File already exists", setIcon = QMessageBox.Critical)
-                    else:
-                        MsgBox("The path " +ProjectReportFolder+" was not found",setWindowTitle="Error: Report folder missing", setIcon = QMessageBox.Critical)
-                else:
-                    MsgBox("This PROJECT ADMIN DATABASE was not found\Contact software programmer",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            else:
-                MsgBox("The report title cannot be empty",setWindowTitle="Can't proceed", setIcon = QMessageBox.Information)
-
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class SpecsWindow(QMainWindow):
-    def __init__(self):
-        try:
-            super().__init__()
-          #New Button
-            self.NewButton = QToolButton()
-            self.NewButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.NewButton.setText("New")
-            self.NewButton.setIcon(QIcon(newaction_icon))
-            self.NewButton.setStyleSheet("""QToolButton{border:0.5px;
-            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            # self.NewButton.setGeometry(QRect(40, 63,70, 70))
-            self.NewButton.setIconSize(QSize(75, 42))
-            menu=QMenu()
-            self.NewButton.setMenu(menu)
-            self.NewButton.setPopupMode(QToolButton.InstantPopup) #Set popup mode of the button drop down
-            self.specificationaction=menu.addAction("Specification") # button drop down actions
-            self.scheduleaction=menu.addAction("Schedule") # button drop down actions
-            self.specificationaction.triggered.connect(self.NewSpecsClicked)
-            self.scheduleaction.triggered.connect(self.NewScheduleClicked)
-
-          #Calcs Template Button
-            self.TemplatesButton = QToolButton()
-            self.TemplatesButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon) #
-            self.TemplatesButton.setText("Templates")
-            self.TemplatesButton.setIcon(QIcon(template_icon))
-            self.TemplatesButton.setStyleSheet("""QToolButton{border:0.5px;
-            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            self.TemplatesButton.setIconSize(QSize(75, 42))
-            menu=QMenu()
-            self.TemplatesButton.setMenu(menu)
-            self.TemplatesButton.setPopupMode(QToolButton.InstantPopup) #Set popup mode of the button drop down
-            # self.spectempaction=menu.addAction("Specification") # button drop down actions
-            self.scheduletempaction=menu.addAction("Schedule") # button drop down actions
-            self.scheduletempaction.triggered.connect(self.scheduletempClicked)
-            # self.TemplatesButton.setHidden(True)
-
-          #Refresh button
-            self.RefreshButton = QToolButton()
-            self.RefreshButton.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.RefreshButton.setText(" Refresh ")
-            self.RefreshButton.setIcon(QIcon(refresh_icon))
-            self.RefreshButton.setStyleSheet("""QToolButton{border:0.5px;
-            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            self.RefreshButton.setIconSize(QSize(45, 35))
-            self.RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
-            QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
-          
-          #Project Label
-            currentProjectLabel= QLabel("Specs & Schedules:    " +ThisProject_foldername)
-            currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
-            # currentProjectLabel.setGeometry(QRect(450, 70, 290,40))
-
-          #Specs Table
-            self.SpecsTable = QTableWidget(1,3)
-            # self.SpecsTable.setGeometry(QRect(10, 160, 620, 751))
-            #Drawings Table Headear
-            self.SpecsTable.setHorizontalHeaderLabels(["","Specs Number", "Specs Name"])
-            self.Specs_search=QLineEdit()
-            self.Specs_search.setPlaceholderText("Search")
-           
-          #Schedules Table
-            self.SchedulesTable = QTableWidget(1,3)
-            self.SchedulesTable.setHorizontalHeaderLabels(["","Schedule Number", "Schedule Name"])
-            #Inform user the table is not working yet
-            # self.SchedulesTable.setItem(0,0,QTableWidgetItem("This table is not working yet"))
-            # self.SchedulesTable.setColumnWidth(0, 600)
-            # self.SchedulesTable.item(0,0).setFlags(Qt.ItemIsEnabled)
-            self.Schedules_search=QLineEdit()
-            self.Schedules_search.setPlaceholderText("Search")
-           
-            global SpecsSeqNoDict, SchedulesSeqNoDict
-            SpecsSeqNoDict = {}
-            SchedulesSeqNoDict = {}
-          
-          #Get reports
-            if path.exists(Project_Database):
-                self.SpecsTable.itemDoubleClicked.connect(lambda: self.openfile(self.SpecsTable))
-                self.Specs_search.textChanged.connect(lambda: self.filter_search(self.SpecsTable,self.Specs_search))
-                self.SchedulesTable.itemDoubleClicked.connect(lambda: self.openfile(self.SchedulesTable))   
-                self.Schedules_search.textChanged.connect(lambda: self.filter_search(self.SchedulesTable,self.Schedules_search))
-
-                QShortcut(QKeySequence('Ctrl+N'),self).activated.connect(self.NewSpecsClicked)
-                QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.SpecsTable))
-                self.SpecsTable.installEventFilter(self)
-                self.SchedulesTable.installEventFilter(self)
-                con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
-                conn = pyodbc_connect(con_string)
-                cursor =conn.cursor() 
-                for table, val in {self.SpecsTable:['6 Specifications',SpecsSeqNoDict], self.SchedulesTable:['7 Schedules',SchedulesSeqNoDict]}.items():           
-                    if table==self.SpecsTable:
-                        cursor.execute("SELECT * FROM {}".format('Specs'))
-                    else:
-                        cursor.execute("SELECT * FROM {}".format('Schedules'))
-                    data= cursor.fetchall()
-                    StageDict={} #to store specs as key(stage):value(list of specs index(index from data)) pair e.g {'01':[0,5,1]}
-                    for d in range(len(data)): #Get all specs in Access and display (sorting them by stages)
-                        if data[d].PreName.split('-')[2] in StageDict: #if stage already in dictionary, add spec index as value list otherwise create add stage as key and add spec index as first in list
-                            StageDict[data[d].PreName.split('-')[2]].append(d)
-                        else:
-                            StageDict[data[d].PreName.split('-')[2]]= [d]
-                    table.setRowCount(len(data)+len(StageDict))
-                    rowno=0
-                    for stage in StageDict: #For each stage in StageDict
-                        table.setItem(rowno,0, QTableWidgetItem("Stage "+ stage))    
-                        table.setSpan(rowno,0,1,3) #Span the row to 3 columns
-                        font=QFont()
-                        font.setBold(True)
-                        table.item(rowno,0).setFont(font)
-                        table.item(rowno,0).setIcon(expanded_icon)
-                        table.item(rowno,0).setData(256,True) # true as in is it expanded
-                        stagerow= rowno
-                        rowno+=1
-                        for d in StageDict[stage]:   #Get specs based on index in StageDict Dictionary Value list
-                            table.setItem(rowno,1, QTableWidgetItem(data[d].PreName))
-                            table.setItem(rowno,2, QTableWidgetItem(data[d].PostName))
-                            if table==self.SpecsTable:
-                                filepath=ProjectSpecsFolder+"\\Stage "+data[d].PreName.split('-')[2]+"\\"+data[d].PreName+" - "+data[d].PostName+".docx"
-                                tooltiptext="This specification docx file is missing in its stage folder"
-                            else:
-                                filepath=ProjectSchedulesFolder+"\\Stage "+data[d].PreName.split('-')[2]+"\\"+data[d].PreName+" - "+data[d].PostName+".xlsx"
-                                tooltiptext="This schedule xlsx file is missing in the schedule folder"
-                            if path.exists(filepath)==False:
-                                for c in range(1,3):
-                                    table.item(rowno,c).setBackground(QColor("#FFE2E2"))
-                                    table.item(rowno,c).setToolTip(tooltiptext)
-                                    table.item(rowno,c).setForeground(QColor("#FF0000"))
-                                    table.item(rowno,c).setData(259,True) # true as in is it missing
-                            #Populate Sequential no Dictionary 
-                            if data[d].Ref in val[1]:
-                                if int(data[d].SeqNo) > val[1][data[d].Ref]:
-                                    val[1][data[d].Ref]= int(data[d].SeqNo)
-                            else:
-                                val[1][data[d].Ref]= int(data[d].SeqNo)
-                            rowno+=1
-                            table.selectRow(stagerow)
-                        # self.openfile(self.SpecsTable)#fold stages
-                    header = table.horizontalHeader()       
-                    table.setSelectionBehavior(1)
-                    for i in range(2):
-                        header.setSectionResizeMode(i, QHeaderView.Interactive)
-                    # self.SpecsTable.setColumnWidth(i,colsizelist[i]+60)
-                    table.setColumnWidth(0,80)
-                    table.setColumnWidth(1,260)
-                    table.setColumnWidth(2,420)
-                    table.setStyleSheet("""QHeaderView{background : transparent;}QHeaderView::section{font-family: "Microsoft YaHei"; color: #8999ba; text-align:left; background: #e4e6ed; min-height: 49px; max-height:49px;
-                    margin-left:0px;padding-left: 0px;} QTableWidget{background: #FFFFFF; border:1px; border-style:outset; font-family:"Microsoft YaHei"; } QTableWidget::item::selected{color:rgba(0,0,0,0.7); background:#ecfcf8; font:bold; border-top: 1px solid rgba(255,255,255,0.9); border-bottom: 1px solid rgba(255,255,255,0.9); }""")
-                    #selection blue ecf4fd breen ecfcf8
-                    table.setShowGrid(False)
-                    table.verticalHeader().setVisible(False)
-                    table.horizontalHeader().setSectionResizeMode(0,QHeaderView.ResizeToContents)
-                cursor.close()
-                conn.close()
-            else:
-                self.SpecsTable.setRowCount(1)
-                self.SpecsTable.setItem(0, 0,QTableWidgetItem("No PROJECT ADMIN DATABASE found"))
-                self.SpecsTable.setColumnHidden(1,True)
-                self.SpecsTable.setColumnHidden(2,True)
-                self.SpecsTable.setColumnHidden(3,True)
-                self.SpecsTable.item(0,0).setBackground(QColor("#EE1111"))
-                self.NewButton.setEnabled(False)
-                self.SpecsTable.horizontalHeader().setVisible(False)
-                self.SchedulesTable.setVisible(False)
-                self.Specs_search.setVisible(False)
-                self.Schedules_search.setVisible(False)
-                for table in [self.SpecsTable, self.SchedulesTable]:
-                    #Table header expansion   
-                    header = table.horizontalHeader()       
-                    header.setSectionResizeMode(0,QHeaderView.ResizeToContents)
-
-          #Page formats
-            self.OptionsLayout=QGridLayout()
-            self.OptionsLayout.addWidget(self.NewButton,0,0)
-            self.OptionsLayout.addWidget(self.TemplatesButton,0,1)
-            self.OptionsLayout.addWidget(self.RefreshButton,0,2)
-            # self.OptionsLayout.addWidget(self.HelpButton,0,2)
-            self.OptionsLayout.setHorizontalSpacing(30)
-            TopLayout=QHBoxLayout()
-            TopLayout.addStretch(1)
-            TopLayout.addLayout(self.OptionsLayout)
-            TopLayout.addStretch(18)
-            TopLayout.addWidget(currentProjectLabel)
-            TopLayout.addStretch(30)
-            SpecsLayout=QVBoxLayout()
-            SpecsLayout.addWidget(self.Specs_search)
-            SpecsLayout.addWidget(self.SpecsTable)
-            SchedulesLayout=QVBoxLayout()
-            SchedulesLayout.addWidget(self.Schedules_search)
-            SchedulesLayout.addWidget(self.SchedulesTable)
-
-            MainLayout= QHBoxLayout()
-            MainLayout.addLayout(SpecsLayout)
-            MainLayout.addLayout(SchedulesLayout)
-            FullLayout=QVBoxLayout()
-            FullLayout.addLayout(TopLayout)
-            FullLayout.addLayout(MainLayout) 
-
-            Page =QWidget()
-            Page.setLayout(FullLayout)
-            self.setCentralWidget(Page)
-            menuBar = self.menuBar()
-            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
-            backMenu= QAction(icon=QIcon(back_icon), parent= self)
-            menuBar.addAction(backMenu)
-            menuBar.addAction(homeMenu)
-            homeMenu.triggered.connect(self.homeAction)
-            backMenu.triggered.connect(self.backAction)
-            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
-
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            menuBar = self.menuBar()
-            icon = QIcon()
-            icon.addPixmap(QPixmap(home_icon))
-            homeMenu = QAction(icon=icon,parent= self.widget)
-            menuBar.addAction(homeMenu)
-            homeMenu.triggered.connect(self.homeAction)
-    
-    def eventFilter(self, source, event): 
-        try:
-            if event.type() == QEvent.ContextMenu and source in [self.SpecsTable, self.SchedulesTable]:
-                if len(source.selectionModel().selectedRows())>0:
-                    menu = QMenu(self)
-                    menu.addAction("Open", lambda: self.openfile(source))
-                    menu.addAction("Delete", lambda: self.delete(source))
-                    menu.exec_(event.globalPos())
-                    return True
-            return super().eventFilter(source, event)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def filter_search(self, tableobj, editbox):
-        try:
-            if editbox.text()=='' or  (tableobj.item(0,0)!=None and tableobj.item(0,0).text()=="No PROJECT ADMIN DATABASE found"):
-                for i in range(tableobj.rowCount()): tableobj.setRowHidden(i,False)
-            else:
-                for i in range(tableobj.rowCount()): tableobj.setRowHidden(i,True)
-                for i in range(tableobj.rowCount()):
-                    for j in range(tableobj.columnCount()):
-                        if tableobj.item(i,j) !=None and editbox.text().lower() in tableobj.item(i,j).text().lower():
-                            tableobj.setRowHidden(i, False) 
-                            break
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def delete(self, tableobj):
-        try:
-            selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0) if (tableobj.isRowHidden(i.row())==False) and (tableobj.columnSpan(i.row(),1) <= 1)]
-            
-            # selectionindexes = [i for i in selectionindexes if tableobj.columnSpan(i,1) <= 1] #Remove any one that isn't file
-
-            if len(selectionindexes):
-                qm=QMessageBox()
-                if tableobj == self.SpecsTable:
-                    subfolderstr= ProjectSpecsFolder
-                    tbl='Specs'
-                elif tableobj == self.SchedulesTable:
-                    subfolderstr= ProjectSchedulesFolder
-                    tbl='Schedules'
-                ret = qm.question(self,"Delete selected "+ tbl, "Are you sure you want to delete these " + str(len(selectionindexes)) + " "+tbl + "?", qm.Yes | qm.No)
-                if ret == qm.Yes:
-                    
-                    con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
-                    conn = pyodbc_connect(con_string)
-                    cursor =conn.cursor()            
-                    for i in selectionindexes:
-                        if tableobj == self.SpecsTable:
-                            toDelete= 'Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".docx"
-                        elif tableobj == self.SchedulesTable:
-                            toDelete= 'Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".xlsx"
-                        cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = '"+ str(tableobj.item(i, 1).text()) + "' AND PostName = '"+ str(tableobj.item(i, 2).text()) + "')")
-                        if path.exists(subfolderstr+'\\'+toDelete):
-                            while True:
-                                try:
-                                    #Delete file 
-                                    remove(subfolderstr+'\\'+toDelete)
-                                    break
-                                except IOError:
-                                    #If there's error while opening the file, tell user to close the file to continue
-                                    MsgBox("Please make sure the "+ subfolderstr+'\\'+toDelete+" isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
-                        else:
-                            MsgBox(subfolderstr+'\\'+toDelete+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
-                    widget.removeWidget(specswindow)
-                    specswindow.__init__()
-                    widget.addWidget(specswindow) 
-                    widget.setCurrentWidget(specswindow)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def NewSpecsClicked(self):
-        try:
-            global newspecsdialog
-            newspecsdialog=NewSpecs_Dialog()
-            newspecsdialog.exec()
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def NewScheduleClicked(self):
-        try:
-            global newschedulesdialog
-            newschedulesdialog=NewSchedules_Dialog()
-            newschedulesdialog.exec()
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def scheduletempClicked(self):
-        try:
-           #Call background class and Show background page
-            global schedulestempdialog
-            schedulestempdialog=SchedulesTemplates_Dialog()
-            schedulestempdialog.exec()
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def openfile(self, tableobj):
-        try:
-            # if tableobj == self.SpecsTable:
-                # subfolderstr= '6 Specifications'
-
-            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0)]
-            
-            if len(self.selectionindexes)==1 and tableobj.columnSpan(self.selectionindexes[0],1)>2: 
-                # datacol= 0 
-                
-                if tableobj.item(self.selectionindexes[0],0).data(256)==True: # if it is expanded
-                    tableobj.item(self.selectionindexes[0],0).setIcon(folded_icon) # change icon to folded
-                    tableobj.item(self.selectionindexes[0],0).setData(256,False)  # change expanded boolean parameter to false
-                    fold=True                      # set variable fold to True(more like an instruction i.e Fold this part )
-                else:
-                    tableobj.item(self.selectionindexes[0],0).setIcon(expanded_icon)
-                    tableobj.item(self.selectionindexes[0],0).setData(256,True)
-                    fold=False
-                for d in range(self.selectionindexes[0]+1,tableobj.rowCount()): #from row after clicked row till the end
-                    if tableobj.item(d,1)==None:
-                        break
-                    else:
-                        tableobj.setRowHidden(d,fold)       
-
-            #if user is attempting to open file
-            else:
-                for i in self.selectionindexes:
-                    if tableobj.columnSpan(i,1)==1:
-                        #open file in stage folder
-                        if tableobj == self.SpecsTable:
-                            self.toOpen= ProjectSpecsFolder+'\\Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".docx"
-                        elif tableobj == self.SchedulesTable:
-                            self.toOpen=ProjectSchedulesFolder+'\\Stage '+ tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".xlsx"
-                        if path.exists(self.toOpen):
-                            startfile(self.toOpen)
-                            #Popen([self.toOpen],shell=True)
-                        else:
-                            MsgBox(self.toOpen+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def RefreshClicked(self):
-        try:
-            widget.removeWidget(specswindow)
-            specswindow.__init__()
-            widget.addWidget(specswindow)
-            widget.setCurrentWidget(specswindow)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def backAction(self):
-        try:
-            widget.setCurrentWidget(projectwindow)
-            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def homeAction(self):
-        try:
-            widget.setCurrentWidget(initwindow)
-            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class NewSpecs_Dialog(QDialog):
-    def __init__(self):
-        try:
-            super(NewSpecs_Dialog,self).__init__()
-            # self.resize(500,500) #Window width and height
-          #Check if this project three-letter code has been set, and give error msg if not
-            if project3name_dict[ThisProject_foldername] =='XXX':
-                MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-          
-          #Create Dropdowns and fill them
-            self.StageBox= QComboBox(self)
-            self.StageBox.addItems(['Stage 02','Stage 03','Stage 04'])
-            self.StageBox.setCurrentText('Stage 04')
-
-
-            self.TypeVLayout= QVBoxLayout()
-            self.TypesList= []
-            for type in ['MEP Preliminaries', 'MEP Project Specifics', 'MEP Project Specific Materials and Workmanship', 'MEP Strip Out Specification', 'Sustainability Specification']:
-                checkbox= QCheckBox(type)
-                self.TypesList.append(checkbox)
-                self.TypeVLayout.addWidget(checkbox)
-
-
-            self.TypeGroupBox= QGroupBox()
-            self.TypeGroupBox.setTitle('Spec. Type')
-            self.TypeGroupBox.setLayout(self.TypeVLayout)
-            
-            
-
-          #Arrange the window layout
-            self.grid= QGridLayout()
-            #self.grid.addWidget(QLineEdit())
-            self.grid.addWidget(QLabel('Type:'), 0,0)
-            self.grid.addWidget(self.StageBox, 0,1)
-            self.grid.addWidget(self.TypeGroupBox, 1,0,1,2)
-
-            self.grid.setVerticalSpacing(30) #spacing between the widgets
-            self.grid.setHorizontalSpacing(30)
-            self.gridGroupBox = QGroupBox()
-            self.gridGroupBox.setLayout(self.grid) 
-            
-            self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            
-            mainLayout = QVBoxLayout()
-            mainLayout.addWidget(self.gridGroupBox)
-            mainLayout.addWidget(self.buttonBox)
-            mainLayout.setSpacing(30)
-
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-            self.setLayout(mainLayout)
-            self.setWindowTitle("New Specification")
-                                    
-            self.buttonBox.accepted.connect(self.funcOK)
-            self.buttonBox.rejected.connect(self.reject)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            newreportdialog.close()
-
-    def getRef(self, type):
-        try:
-            if type in ['MEP Preliminaries', 'MEP Project Specifics', 'MEP Project Specific Materials and Workmanship', 'MEP Strip Out Specification']:
-                type_code='MEP'
-            elif type in ['Sustainability Specification']:
-                type_code='SU'
-            else:
-                type_code='XX'
-            prename=project3name_dict[ThisProject_foldername] +'-RCDC-'+self.StageBox.currentText().replace("Stage ","")+'-XX-SP-'+type_code
-            #Check if this name already exists
-            if prename in SpecsSeqNoDict: #If it does, add 1 to the sequence number
-                count= SpecsSeqNoDict[prename]+1
-            else: #If it doesn't, start the sequence number from 1
-                count= 1
-            #check file doesn't exist
-            while path.exists(ProjectSpecsFolder+"\\"+self.StageBox.currentText()+"\\"+prename+'-'+str(count).zfill(4)+' - '+type+'.docx'):
-                count+=1
-            
-            return prename+'-'+str(count).zfill(4)
-            
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)          
-
-    def funcOK(self):
-        try:
-            #Check if any type is selected
-            checked_types= [i.text() for i in self.TypesList if i.isChecked()]
-            if checked_types==[]:
-                MsgBox("Please select at least one type",setWindowTitle="    ", setIcon = QMessageBox.Information)
-                return
-            global SpecsSeqNoDict #used to update sequence of each newly added spec 
-
-            if path.exists(Project_Database):
-                #Add the new specs into the project database if it is found and if the specs folder for this project is found
-                if path.exists(ProjectSpecsFolder):
-                    #Check if specs template folder exists for this stage
-                    if path.exists(SpecsTempFolder+'\\'+self.StageBox.currentText()):
-                        #Check if templates for selected  stage and types exist
-                        for typ in [i.text() for i in self.TypesList if i.isChecked()]:
-                            if not path.exists(SpecsTempFolder+'\\'+self.StageBox.currentText()+'\\'+self.StageBox.currentText()+' '+typ+'.docx'):
-                                MsgBox("Template '"+self.StageBox.currentText()+" "+typ+".docx' was not found\n\nIt may be that this template doesn't exist yet. Please use the Stage 4 template instead",setWindowTitle="    ", setIcon = QMessageBox.Information)
-                                break
-                        else:
-                            #Ensure there is a stage folder in this project for selected stage
-                            if not path.exists(ProjectSpecsFolder+'\\'+self.StageBox.currentText()):
-                                mkdir(ProjectSpecsFolder+'\\'+self.StageBox.currentText())
-                                # mkdir(ProjectSpecsFolder+'\\'+self.StageBox.currentText()+'\\SS')
-
-                            #Check if client logo exists
-                            self.ThisClientLogo=""
-                            proceed=""
-                            for file in listdir(ClientsLogos):# check if client has logo
-                                if file.rsplit('.',1)[0]==ThisProject_client:
-                                    self.ThisClientLogo=ClientsLogos+'\\'+file
-                                    proceed="Yes"
-                                    break
-                            else:
-                                qm = QMessageBox
-                                ret = qm.question(self,"Note: Client logo not found", "Logo for Client: '" +ThisProject_client+"' was not found\n This can be added in the Admin \n Would you like to proceed without the logo?", qm.Yes | qm.No )
-                                if ret == qm.Yes:
-                                    proceed="Yes"
-                            if proceed=="Yes":
-                                for typ in [i.text() for i in self.TypesList if i.isChecked()]:
-                                    specsRef=self.getRef(typ)
-                                    self.template= SpecsTempFolder+'\\'+self.StageBox.currentText()+'\\'+self.StageBox.currentText()+' '+typ+'.docx'
-                                    #ensure template is not open
-                                    while True:
-                                        try:
-                                            # text.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-                                            doc=docx.Document(self.template) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
-                                            for par in doc.paragraphs:#Check for Report Title in the doc and replace with the title in the report title box
-                                                if "REPORTTITLE" in par.text:
-                                                    replaceRunInParagraph(par, "REPORTTITLE", typ)
-                                                elif "PROJECTNAME" in par.text:##Similar to report title
-                                                    replaceRunInParagraph(par, "PROJECTNAME", ThisProject_name)
-                                                elif "REPORTDATE" in par.text:
-                                                    replaceRunInParagraph(par, "REPORTDATE", f"Date: {date.today().strftime('%d/%m/%y')}")
-                                                elif "CLIENTNAME" in par.text:
-                                                    replaceRunInParagraph(par, "CLIENTNAME", ThisProject_client)
-                                                elif "REPORTREFERENCE" in par.text:
-                                                    replaceRunInParagraph(par, "REPORTREFERENCE", specsRef)
-                                                elif par.text== "CLIENTLOGO" and self.ThisClientLogo!="":
-                                                    # pass
-                                                    par.text =""
-                                                    r=par.add_run()
-                                                    try:
-                                                        r.add_picture(self.ThisClientLogo)
-                                                    except ZeroDivisionError:
-                                                        r.add_picture(self.ThisClientLogo,width=Inches(1.822835), height=Inches(0.9409449))  #, width=Inches(1.822835), height=Inches(0.9409449))#the width and height is set
-                                            
-                                            #tables
-                                            for table in doc.tables:
-                                                for row in table.rows:
-                                                    for cell in row.cells:  
-                                                        if cell.text=="Project Title":
-                                                            row.cells[1].text=ThisProject_name
-                                                        elif cell.text=="Project Number":
-                                                            row.cells[1].text=ThisProject_no
-                                                        elif cell.text=="Report Title":
-                                                            row.cells[1].text=typ
-                                                        elif cell.text=="Report Reference":
-                                                            row.cells[1].text=specsRef
-                                            #footer
-                                            for section in doc.sections:
-                                                for par in section.footer.paragraphs:
-                                                    if 'PROJECTNAME' in par.text:
-                                                        replaceRunInParagraph(par,'PROJECTNAME',ThisProject_name)
-                                               
-                                            filename=ProjectSpecsFolder+"\\"+self.StageBox.currentText()+"\\"+specsRef+' - ' +typ+'.docx'
-                                            doc.save(filename) # save the file
-                                            #Record into database
-                                            con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';' #Connect to the project database
-                                            conn = pyodbc_connect(con_string)
-                                            cursor =conn.cursor()                    
-                                            values = (
-                                                (specsRef[:-5], specsRef[-4:], typ)
-                                            )
-                                            cursor.execute("INSERT INTO Specs (Ref, SeqNo, PostName) VALUES (?,?,?)", values)
-                                            conn.commit()
-                                            cursor.close()
-                                            conn.close()#Save changes and close cursor and connection
-
-                                            SpecsSeqNoDict[specsRef[:-5]]=int(specsRef[-4:]) #Add the new spec to the dictionary
-
-                                            #Open the file
-                                            startfile(filename)# open the file
-                                            break
-
-                                        except docx.opc.exceptions.PackageNotFoundError:
-                                            MsgBox("Please make sure '"+self.template+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Template file open", setIcon = QMessageBox.Critical)
-                                #Go back to the main window after refreshing with new project
-                                newspecsdialog.close()
-                                widget.removeWidget(specswindow)
-                                specswindow.__init__()
-                                widget.addWidget(specswindow) 
-                                widget.setCurrentWidget(specswindow)
-                                msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
-                                msg.exec_()
-                    else:
-                        MsgBox("The path '" +SpecsTempFolder+'\\'+self.StageBox.currentText()+"' was not found",setWindowTitle="Error: Template folder missing", setIcon = QMessageBox.Critical)
-                else:
-                    MsgBox("The path " +ProjectSpecsFolder+" was not found",setWindowTitle="Error: This project's specs folder missing", setIcon = QMessageBox.Critical)
-            else:
-                MsgBox("This PROJECT ADMIN DATABASE was not found\Contact software programmer",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class NewSchedules_Dialog(QDialog):
-    def __init__(self):
-        try: 
-            super().__init__()
-            self.resize(700,732) #Window width and height
-            #Get schedules templates data
-            if path.exists(SchedulesTempFolder+"\\data.json"):  
-                self.schedulesData={}            
-                with open(SchedulesTempFolder+"\\data.json", 'r') as f:
-                    self.data=json_load(f)
-                if "Disciplines" in self.data:  
-                    glay=QGridLayout()
-                    types=set()
-                    for discipline, attr in self.data["Disciplines"].items():
-                        self.schedulesData[discipline]={"ServiceNo":attr["ServiceNo"], "Schedules":{}} #Create a dictionary of all disciplines
-                        label=QLabel(discipline)
-                        label.setStyleSheet("font: 16px;font-weight: bold;")
-                        col=glay.columnCount()
-                        glay.addWidget(label,0,col)
-                        #Create a checkbox for each schedule in the discipline and also add the checkbox to the schedulesData dict
-                        row=1
-                        for schedule in attr["Schedules"]:
-                                checkbox= QCheckBox(schedule)
-                                if path.exists(SchedulesTempFolder+"\\"+schedule+".xlsx")==False: #Check if the schedule template exists
-                                    checkbox.setCheckable(False)
-                                    # checkbox.setStyleSheet("color: red;")
-                                    checkbox.setToolTip("Template not found")
-                                    checkbox.setEnabled(False)
-                                #Add the checkbox to dict with type as well
-                                type= attr["Schedules"][schedule]["Type"]
-                                self.schedulesData[discipline]["Schedules"][schedule]={"Checkbox":checkbox, "Type":type}
-                                for typ in type:
-                                    types.add(typ)
-                                glay.addWidget(checkbox,row,col)
-                                row+=1
-                    glay.setVerticalSpacing(5)
-                    scroll = QScrollArea()
-                    scroll.setWidgetResizable(True)
-                    scroll.setWidget(QWidget())
-                    scroll.widget().setLayout(glay)
-
-                    #order types alphabetically
-                    types=sorted(types) #returns a list
-                    #Top right buttons
-                    typesLayout=QVBoxLayout()
-                    for typ in types:
-                        button=QPushButton(typ)
-                        button.clicked.connect(lambda x, type=typ: self.typeButtonClicked(type))
-                        typesLayout.addWidget(button)
-                    toplayout=QHBoxLayout()
-                    toplayout.addStretch()
-                    toplayout.addLayout(typesLayout)
-                    buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-                    buttonBox.accepted.connect(self.titlesDialog)
-                    buttonBox.rejected.connect(self.reject)
-                    self.mainLayout=QVBoxLayout()
-                    self.mainLayout.addLayout(toplayout)
-                    self.mainLayout.addWidget(scroll)
-                    self.mainLayout.addWidget(buttonBox)
-                    self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-                    self.setLayout(self.mainLayout)
-                    self.setWindowTitle("New Schedule")
-                else:
-                    MsgBox("No 'Disciplines' found in the data.json file\n\nContact software programmer", setWindowTitle="      ", setIcon = QMessageBox.Information)
-            else:
-                MsgBox("No data.json file found in the schedules templates folder\n\nContact software programmer", setWindowTitle="      ", setIcon = QMessageBox.Information)
-
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            newschedulesdialog.close()
-
-    def typeButtonClicked(self, type):
-        try:
-            for service in self.schedulesData.values():
-                for schedule in service["Schedules"].values():
-                    schedule["Checkbox"].setChecked(False)
-                    if type in schedule["Type"]:
-                        schedule["Checkbox"].setChecked(True)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def titlesDialog(self):
-        try:
-            
-            # dialog.setLayout(form)
-            #Check if any type is selected
-            checked_types= [{'Schedule':schname,'Checkbox':schvalue['Checkbox'],'Type':schvalue['Type'],'ServiceNo':service['ServiceNo']} for service in self.schedulesData.values() for schname,schvalue in service["Schedules"].items() if schvalue["Checkbox"].isChecked()]
-            if checked_types!=[]:
-                self.schedulesTable= QTableWidget(1,1)
-                self.schedulesTable.setRowCount(len(checked_types))
-                self.schedulesTable.setHorizontalHeaderLabels(["Schedules"])
-                row=0
-                self.seqNoTempDict=SchedulesSeqNoDict.copy()
-                for sch in checked_types:
-                    self.schedulesTable.setItem(row,0,QTableWidgetItem(self.getRef(sch) + " - " + sch['Schedule']))
-                    self.schedulesTable.item(row,0).setData(256,sch['Schedule'])
-                    row+=1
-                self.schedulesTable.itemSelectionChanged.connect(self.selection_changed)#fuction to call when a schedule is selected
-                # print(SchedulesSeqNoDict)
-                # print(self.seqNoTempDict)
-
-                self.schedulesTable.verticalHeader().setVisible(False)
-                # self.schedulesTable.horizontalHeader().setVisible(False)
-                self.schedulesTable.setShowGrid(False)
-                header = self.schedulesTable.horizontalHeader()       
-                header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-                self.schedulesTable.setColumnWidth(0,self.schedulesTable.horizontalHeader().sectionSize(0))
-                header.setSectionResizeMode(0, QHeaderView.Interactive)
-                # header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-                # header.setSectionResi
-                # zeMode(2, QHeaderView.Interactive)
-
-                self.schedulesTable.setColumnWidth(0,800)
-
-                # print(checked_types.keys())
-                self.confirmdialog=QDialog()
-                self.confirmdialog.resize(800,600)
-                self.EditName=QLineEdit()
-                self.EditName.setEnabled(False)
-                self.EditName.textChanged.connect(self.nameChanged)
-                self.EditNameButton=QPushButton("Edit",self)
-                self.EditNameButton.setEnabled(False)
-                self.EditNameButton.clicked.connect(lambda: self.editSelectedName(True))
-                self.editHbox=QHBoxLayout()
-                self.editHbox.addWidget(self.EditNameButton)
-                self.editHbox.addWidget(self.EditName)
-
-                buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-                buttonBox.accepted.connect(self.funcOK)
-                buttonBox.rejected.connect(self.confirmdialog.reject)
-                vbox= QVBoxLayout()
-                vbox.addWidget(self.schedulesTable)
-                vbox.addLayout(self.editHbox)
-                vbox.addWidget(buttonBox)
-                self.confirmdialog.setLayout(vbox)
-                self.confirmdialog.setWindowFlags(self.confirmdialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-                self.confirmdialog.setWindowTitle("Confirm Titles")
-                self.confirmdialog.exec()
-            else:
-                MsgBox("Please select at least one schedule",setWindowTitle="    ", setIcon = QMessageBox.Information)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def getRef(self, schdict):
-        try:
-            ribastage=RIBAstages[ThisProject_no+' - '+ ThisProject_name]
-            if ribastage=='': ribastage='XX'
-            prename= project3name_dict[ThisProject_foldername] +'-RCDC-'+ribastage+'-XX-SH-'+schdict['ServiceNo']
-            #Check if this name already exists
-            if prename in self.seqNoTempDict: #If it does, add 1 to the sequence number
-                sequential_no= str(self.seqNoTempDict[prename]+1).zfill(4)  
-            else: #If it doesn't, start the sequence number from 1
-                sequential_no= '0001'
-            self.seqNoTempDict[prename]=int(sequential_no) #Add the new spec to the dictionary
-            return prename+'-'+sequential_no
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def selection_changed(self):
-        try:
-            if len(self.schedulesTable.selectedItems())>0:
-                self.EditNameButton.setEnabled(True)
-                self.editSelectedName(False)
-            else:
-                self.EditNameButton.setEnabled(False)
-                self.EditName.setEnabled(False)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def editSelectedName(self, bool):
-        try:
-            if len(self.schedulesTable.selectedItems())>0:
-                if bool==True:
-                    self.EditName.setEnabled(True)
-                if " - " in self.schedulesTable.selectedItems()[0].text():
-                    self.EditName.setText(self.schedulesTable.selectedItems()[0].text().split(" - ",1)[1])
-                elif " " in self.schedulesTable.selectedItems()[0].text():
-                    self.EditName.setText(self.schedulesTable.selectedItems()[0].text().split(" ",1)[1])
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def nameChanged(self):
-        try:
-            if self.EditName.text() != "":
-                if " - " in self.schedulesTable.selectedItems()[0].text():
-                    self.schedulesTable.selectedItems()[0].setText(self.schedulesTable.selectedItems()[0].text().split(" - ",1)[0]+" - "+self.EditName.text())
-                elif " " in self.schedulesTable.selectedItems()[0].text():
-                    self.schedulesTable.selectedItems()[0].setText(self.schedulesTable.selectedItems()[0].text().split(" ",1)[0]+" - "+self.EditName.text())
-                else:
-                    self.schedulesTable.selectedItems()[0].setText(self.schedulesTable.selectedItems()[0].text()+" - "+self.EditName.text())
-            else:
-                self.schedulesTable.selectedItems()[0].setText(self.schedulesTable.selectedItems()[0].text().split(" - ",1)[0]+" - No name")
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def fillExcel(self, filename, schdict):
-        try:
-            wb = load_workbook(filename, read_only=False)
-            for ws in wb.worksheets: #Loop through all the sheets in the workbook
-                if ws.title!= "Manufacturer's Info":
-                    dict = schdict.copy() #Make a copy of the dictionary
-                    for row in ws.iter_rows(): #Loop through all the rows in the sheet
-                        for cell in row: #Loop through all the cells in the row
-                            if cell.value!=None and cell.value in dict: #If the cell value is in the dictionary, replace it with the dictionary value
-                                temp = cell.value
-                                cell.value = schdict[cell.value] #Replace the cell value with the dictionary value
-                                dict.pop(temp) #Remove the value from the dictionary
-                                if len(dict)==0: #If the dictionary is empty, break the loop
-                                    break
-                        if len(dict)==0: #If the dictionary is empty, break the loop
-                            break
-            wb.save(filename)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def funcOK(self):
-        try:
-            # pass
-            if path.exists(Project_Database)==True:
-                if path.exists(ProjectSchedulesFolder):
-            #         #Check if schedules template folder exists for this stage
-                    if path.exists(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
-                        mkdir(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])
-                        mkdir(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\SS')
-                    # Check if templates for selected  schedules exist
-                    ####
-                    for sch in range(0,self.schedulesTable.rowCount()):
-                        if not path.exists(SchedulesTempFolder+'\\'+self.schedulesTable.item(sch,0).data(256)+'.xlsx'):
-                            MsgBox("Template '"+self.schedulesTable.item(sch,0).data(256)+"'.xlsx' was not found\n",setWindowTitle="    ", setIcon = QMessageBox.Information)
-                            break
-                        if path.exists(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.schedulesTable.item(sch,0).text()+'.xlsx'):
-                            MsgBox("Schedule '"+self.schedulesTable.item(sch,0).text()+".xlsx' already exists\n\nPlease rename the schedule",setWindowTitle="    ", setIcon = QMessageBox.Information)
-                            break
-                    else:
-                        con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';' #Connect to the project database
-                        conn = pyodbc_connect(con_string)
-                        cursor =conn.cursor()      
-                        for sch in range(0,self.schedulesTable.rowCount()):
-
-                            schedule=self.schedulesTable.item(sch,0).text()
-                            scheduleRef=schedule.split(" - ",1)[0]
-                            scheduleTitle=schedule.split(" - ",1)[1]
-                            filePath= ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+schedule+'.xlsx'
-                            copyfile(SchedulesTempFolder+'\\'+self.schedulesTable.item(sch,0).data(256)+'.xlsx', filePath)
-                            #edit the excel file
-                            self.fillExcel(filePath, {"[PROJECT NAME]":ThisProject_name, "[PROJECT NUMBER]":int(ThisProject_no), "[SCHEDULE REF]":scheduleRef, "[SCHEDULE TITLE]" : scheduleTitle, "[DATE]":datetime.now().strftime("%d/%m/%Y"),"[REVISION]":"P01"})
-                            values = (
-                                (scheduleRef[:-5], scheduleRef[-4:], scheduleTitle  )
-                            )
-                            cursor.execute("INSERT INTO Schedules (Ref, SeqNo, PostName) VALUES (?,?,?)", values)
-                            SchedulesSeqNoDict[scheduleRef[:-5]]=int(scheduleRef[-4:]) #Add the new schedule to the dictionary
-                        conn.commit()
-                        cursor.close()
-                        conn.close()#Save changes and close cursor and connection
-                        self.close()
-                        self.confirmdialog.close()
-                        widget.removeWidget(specswindow)
-                        specswindow.__init__()
-                        widget.addWidget(specswindow)
-                        widget.setCurrentWidget(specswindow)
-                        msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
-                        msg.exec_()
-            #                 #Open the file
-            #                 # startfile(filename)# open the file
-            #                 break
-                else:
-                    MsgBox("The path " +ProjectSchedulesFolder+" was not found",setWindowTitle="Error: This project's schedules folder missing", setIcon = QMessageBox.Critical)
-            else:
-                MsgBox("This PROJECT ADMIN DATABASE was not found\Contact software programmer",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-class SchedulesTemplates_Dialog(QDialog):
-    def __init__(self):
-        try:
-            super().__init__()
-            # self.setMaximumSize(500,600)
-            self.resize(700, 800)
-            #New calc template button
-            self.NewScheduleTemplate =QToolButton()
-            self.NewScheduleTemplate.setText("New")
-            self.NewScheduleTemplate.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            self.NewScheduleTemplate.setIcon(QIcon(new_icon))
-            self.NewScheduleTemplate.setStyleSheet("""QToolButton{border:0.5px;
-            border-style:outset;border-color : rgba(0,0,0,0.1);} QToolButton:hover:!pressed { border-style : outset; border:0.5px solid;
-            background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
-            # self.Backgrounds.setGeometry(QRect(40, 63,170, 70))
-            self.NewScheduleTemplate.setIconSize(QSize(60, 40))
-            self.NewScheduleTemplate.clicked.connect(self.NewScheduleTemplateClicked)
-
-           #get templates list from calcs template folder
-            self.TemplatesList= QListWidget()
-            if path.exists(SchedulesTempFolder): #Check if the path exists
-                if path.exists(SchedulesTempFolder+"\\data.json"): #Check if the data.json file exists  
-                    with open(SchedulesTempFolder+"\\data.json", 'r') as f:
-                        data=json_load(f)
-                    data=data["Disciplines"] if "Disciplines" in data else {}
-                    for discipline, attr in data.items():
-                        for schedule in attr["Schedules"]:
-                            if path.exists(SchedulesTempFolder+"\\"+schedule+".xlsx"): #Check if the schedule template exists
-                                self.TemplatesList.addItem(schedule) #Add template to the list
-                                self.TemplatesList.item(self.TemplatesList.count()-1).setData(256,schedule+".xlsx") #Add the full name of the template to the list item
-                                self.TemplatesList.item(self.TemplatesList.count()-1).setData(257,discipline) #Add the discipline of the template to the list item
-                    self.TemplatesList.itemDoubleClicked.connect(lambda: self.openfile(self.TemplatesList))
-                    QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.TemplatesList))
-                    self.TemplatesList.installEventFilter(self)
-
-                    # for files in listdir(SchedulesTempFolder):
-                    #     if files[-5:]=='.xlsx':
-                    #         self.TemplatesList.addItem(files[:-5]) #Add template to the list without the .xls at the end
-                    #         self.TemplatesList.item(self.TemplatesList.count()-1).setData(256,files) #Add the full name of the template to the list item
-                else:
-                    MsgBox("No data.json file found in the schedules tempalates folder\n\nContact software programmer",setWindowTitle="Error", setIcon = QMessageBox.Information)
-                    # self.TemplatesList.addItem("data.json file not found") # if data.json file doesn't exist, display message
-            else:
-                self.TemplatesList.addItem("Path '"+SchedulesTempFolder +" not found") # if folder doesn't exist, display message
-                self.NewScheduleTemplate.setEnabled(False)
-            self.TemplatesList.setSelectionMode(QAbstractItemView.ExtendedSelection) # allow multiple selection in the list
-
-            #page layout
             self.OptionsLayout=QHBoxLayout()
             self.OptionsLayout.addStretch(1)
-            self.OptionsLayout.addWidget(self.NewScheduleTemplate)
-            self.OptionsLayout.addStretch(55)
-            FullLayout=QVBoxLayout()
-            FullLayout.addLayout(self.OptionsLayout)
-            FullLayout.addWidget(self.TemplatesList) 
+            self.OptionsLayout.addWidget(self.rscManager.NewResourceButton)
+            self.OptionsLayout.addStretch(1)
+            self.OptionsLayout.addWidget(self.rscManager.AutoCompletefromBidButton)
+            self.OptionsLayout.addStretch(1)
+            self.OptionsLayout.addWidget(self.rscManager.AutoCompleteQAButton)
+            self.OptionsLayout.addStretch(1)
+            self.OptionsLayout.addWidget(self.RefreshButton)
+            # self.OptionsLayout.addStretch(2)
+            # self.OptionsLayout.addWidget(projectTeamTable)
 
-            self.setLayout(FullLayout)
-            self.setWindowTitle("Schedules Templates")
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-            drawingbackgrounddialog.close()
-    
-    def eventFilter(self, source, event): 
-        try:
-            # when you right click on the item in the list, show options --Delete and Open
-            if event.type() == QEvent.ContextMenu and source in [self.TemplatesList]:
-                if len(source.selectionModel().selectedRows())>0:
-                    menu = QMenu()
-                    menu.addAction("Open",lambda: self.openfile(source))
-                    menu.addAction("Delete",lambda: self.delete(source))
-                    menu.exec_(event.globalPos())
+            #Project Label
+            currentProjectLabel= QLabel("Resources:    " +ThisProject_foldername )
+            currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
 
-                    return True
-            return super().eventFilter(source, event)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def delete(self, tableobj):
-        try:
-            # Delete selected items if they are found
-            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0)]
-            if len(self.selectionindexes):
-                qm=QMessageBox()
-                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete these " + str(len(self.selectionindexes)) + " template(s)?", qm.Yes | qm.No)
-                if ret == qm.Yes:
-                    #get json
-                    for i in self.selectionindexes:
-                        if path.exists(SchedulesTempFolder+'\\'+tableobj.item(i).data(256)):
-                            while True:
-                                try:
-                                    #Delete file
-                                    remove(SchedulesTempFolder+'\\'+tableobj.item(i).data(256))
-                                    break
-                                except IOError:
-                                    #If there's error while opening the file, tell user to close the file to continue
-                                    MsgBox("Please make sure '"+ SchedulesTempFolder+'\\'+tableobj.item(i).data(256)+"' isn't open\n\nClick OK after it is closed",setWindowTitle="File open", setIcon = QMessageBox.Critical)
-                        else:
-                            MsgBox(SchedulesTempFolder+'\\'+tableobj.item(i).data(256)+" was not found",setWindowTitle= "Error", setIcon = QMessageBox.Critical)
-                    with open(SchedulesTempFolder+"\\data.json", 'r+') as f:
-                        data=json_load(f)
-                        for i in self.selectionindexes:
-                            data["Disciplines"][tableobj.item(i).data(257)]["Schedules"].pop(tableobj.item(i).text(), None)
-                        f.seek(0) # rewind to beginning of file
-                        json_dump(data, f, indent = 2)
-                        f.truncate() # remove remaining part
-                    #refresh the page
-                    global schedulestempdialog
-                    schedulestempdialog.close()
-                    schedulestempdialog=SchedulesTemplates_Dialog()
-                    schedulestempdialog.show()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def openfile(self, tableobj):
-        try:
-            #Open selected files
-            self.selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0)]
-            for i in self.selectionindexes:
-                if path.exists(SchedulesTempFolder+'\\'+tableobj.item(i).data(256)):
-                    Popen([SchedulesTempFolder+'\\'+tableobj.item(i).data(256)],shell=True)
-                else:
-                    MsgBox(SchedulesTempFolder+'\\'+tableobj.item(i).text()+" was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
-        except :
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def NewScheduleTemplateClicked(self):
-        try:
-            return
-            def createTemplate():
-                if templateNameEdit.text()!='':
-                    if path.exists(SchedulesTempFolder+'\\'+templateNameEdit.text()+'.xlsx')==False:
-                        # schedulesGeneralTemp=SchedulesTempFolder+'\\'+'General schedule.xlsx'
-                        # if path.exists(schedulesGeneralTemp):
-                            # copyfile(schedulesGeneralTemp,SchedulesTempFolder+'\\'+templateNameEdit.text()+'.xlsx')
-                            with open(SchedulesTempFolder+"\\data.json", 'r+') as f:
-                                data=json_load(f)
-                                data["Disciplines"][serviceBox.currentText()]["Schedules"][templateNameEdit.text()]= {"Type":[stageBox.currentText()]}
-                                f.seek(0) # rewind to beginning of file
-                                json_dump(data, f, indent = 4)
-                                f.truncate() # remove remaining part
-
-                            dialog.close()
-                            msg= TimerMsgBox("Created        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)       
-                            msg.exec_()
-                            global schedulestempdialog
-                            schedulestempdialog.close()
-                            schedulestempdialog=SchedulesTemplates_Dialog()
-                            schedulestempdialog.exec_()
-
-                        # else:
-
-                        #     MsgBox("General schedule template was not found\n\n'"+schedulesGeneralTemp+"'",setWindowTitle=" File missing", setIcon = QMessageBox.Critical)
-                    else:
-                        MsgBox("Template already exists\n\n'"+templateNameEdit.text()+"' already exists",setWindowTitle=" ", setIcon = QMessageBox.Information)
-                else:
-                    MsgBox("Please fill all boxes", setWindowTitle="      ", setIcon = QMessageBox.Information)
+            TopLayout=QHBoxLayout()
+            TopLayout.addStretch(1)
+            TopLayout.addLayout(self.OptionsLayout,3)
+            TopLayout.addStretch(1)
+            TopLayout.addWidget(currentProjectLabel)
+            TopLayout.addStretch(2)
             
-            #Get Schedules templates data.json (needed to get services)
-            if path.exists(SchedulesTempFolder+"\\data.json"):  
-                self.schedulesData={}            
-                with open(SchedulesTempFolder+"\\data.json", 'r') as f:
-                    self.data=json_load(f)
-                if "Disciplines" in self.data:
-                    templateNameEdit=QLineEdit()
-                    serviceBox=QComboBox()
-                    serviceBox.addItems([service for service in self.data["Disciplines"]])
 
-                    stageBox=QComboBox()
-                    stageBox.addItems(["Stage 3", "Stage 4"]) ## if stage 4 is selected, then it is also stage 3
-                    form =QFormLayout()
-                    form.addRow('Schedule Name:',templateNameEdit)
-                    form.addRow('Service:',serviceBox)
-                    form.addRow('Stage:',stageBox)
-                    buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-                    form.addRow(buttonBox)
+            resourceBoardLayout=QGridLayout()
+            resourceBoardLayout.addLayout(self.rscManager.periodLayout, 0, 0)
+            resourceBoardLayout.addWidget(self.rscManager.resourceTable.resource_Search, 1, 0)
+            resourceBoardLayout.addWidget(self.rscManager.resourceTable, 2, 0)
+            resourceBoardLayout.addWidget(self.rscManager.resourceChart, 2, 1)
+            resourceBoardLayout.setColumnStretch(0,1) 
+            resourceBoardLayout.setColumnStretch(1,1)
 
-                    dialog=QDialog()
-                    buttonBox.accepted.connect(createTemplate)
-                    buttonBox.rejected.connect(dialog.reject)
-                    # dialog.setWindowFlags(Qt.Close)
-                    dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-                    dialog.setWindowTitle("New Template")
-                    dialog.setLayout(form)
-                    dialog.exec()
+            MainLayout=QVBoxLayout()
+            MainLayout.addLayout(TopLayout)
+            MainLayout.addLayout(resourceBoardLayout)
 
-                else:
-                    MsgBox("No 'Disciplines' found in the data.json file\n\nContact software programmer", setWindowTitle="      ", setIcon = QMessageBox.Information)
-            else:
-                MsgBox("No data.json file found in the schedules templates folder\n\nContact software programmer", setWindowTitle="      ", setIcon = QMessageBox.Information)
+            # #Page Layouts
+            # self.OptionsLayout=QHBoxLayout()
+            # self.OptionsLayout.addStretch(2)
+            # self.OptionsLayout.addWidget(self.NewResourceButton)
+            # self.OptionsLayout.addStretch(1)
+            # self.OptionsLayout.addWidget(self.AutoCompletefromBidButton)
+            # self.OptionsLayout.addStretch(1)
+            # self.OptionsLayout.addWidget(self.AutoCompleteQAButton)
+            # self.OptionsLayout.addStretch(38)
+            # self.OptionsLayout.addWidget(self.RefreshButton)  
+            # self.OptionsLayout.addStretch(2)
+            # MainLayout=QGridLayout()
+            # # filterHBox=QHBoxLayout()
+            # # filterHBox.addLayout(periodLayout)
+            # # filterHBox.addWidget(self.resourceTable.userFilterBox)
+            # # filterHBox.addStretch(1)
+            # # MainLayout.addLayout(filterHBox, 0, 0)
+            # # MainLayout.addLayout(self.OptionsLayout, 0, 0)
+            # MainLayout.addLayout(periodLayout, 1, 0)
+            # MainLayout.addWidget(self.resourceTable.resource_Search, 2, 0)
+            # hbox=QHBoxLayout()
+            # hbox.addWidget(self.resourceTable)
+            # hbox.addWidget(self.resourceChart)
+            # MainLayout.addLayout(hbox, 3, 0)
+            # # MainLayout.addWidget(self.resourceTable, 3, 0)
+            # # MainLayout.addWidget(self.resourceChart, 3, 1)
+            # MainLayout.addWidget(projectTeamTable, 0, 0)
+            # # MainLayout.addWidget(projectTeamTable, 0, 1)
+            # MainLayout.addLayout(feesLayout, 0, 1)
+            
+            # MainLayout.setColumnStretch(0,1) #this prevents the widgets from resizing when you switch screens
+            # MainLayout.setColumnStretch(1,1)
+
+            
+            # FullLayout=QVBoxLayout()
+            # FullLayout.addLayout(self.OptionsLayout)
+            # FullLayout.addLayout(MainLayout)  
+
+            Page =QWidget()
+            Page.setLayout(MainLayout)
+            self.setCentralWidget(Page)
+            menuBar = self.menuBar()
+            
+            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
+            backMenu= QAction(icon=QIcon(back_icon), parent= self)
+            menuBar.addAction(backMenu)
+            menuBar.addAction(homeMenu)
+            homeMenu.triggered.connect(self.homeAction)
+            backMenu.triggered.connect(self.backAction)
+            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
         except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            menuBar = self.menuBar()
+            homeMenu = QAction(icon=QIcon(home_icon), parent= self)
+            backMenu= QAction(icon=QIcon(back_icon), parent= self)
+            menuBar.addAction(backMenu)
+            menuBar.addAction(homeMenu)
+            homeMenu.triggered.connect(self.homeAction)
+            backMenu.triggered.connect(self.backAction)
+            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
+    
+    def backAction(self):
+        try:
+            #Go back to project page
+            widget.setCurrentWidget(projectwindow)
+            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def homeAction(self):
+        try:
+            widget.setCurrentWidget(initwindow)
+            # widget.setStyleSheet("QMainWindow{background-color:transparent !important;}")
+        except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def refreshResourceWindow(self):
+        try:
+            global Resources_df
+            fetchAllResources()
+            self.rscManager.resetResources()
+            #update the table and chart 
+            self.rscManager.populateTable()
+            self.rscManager.updateAllDisplay()
+
+            #Home Resources tab
+            initwindow.resourceWidget.refreshResourceWindow()
+                        
+            #Home projects widget
+            initwindow.projectsWidget.rscManager.resetResources()
+            initwindow.projectsWidget.updateChart()
+
+            #Projects menu
+            projectwindow.rscManager.resetResources()
+            projectwindow.updateChart()
+        except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
 class TimerMsgBox(QMessageBox):
@@ -11802,7 +12499,7 @@ class FileExplorerTable(QTableWidget):
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     def openfile(self):
         try:
-            selectionindexes = [i.row() for i in self.selectionModel().selectedRows(0) if i>1 and self.item(i.row(),self.columnLabels.index('Type')).text() =='File'] #Make a list of selected files
+            selectionindexes = [i.row() for i in self.selectionModel().selectedRows(0) if i.row()>1 and self.item(i.row(),self.columnLabels.index('Type')).text() =='File'] #Make a list of selected files
             for i in selectionindexes:
                 toOpen= self.cur_dir+'\\'+self.item(i,self.columnLabels.index('Name')).text()
                 if path.exists(toOpen):
@@ -11860,7 +12557,7 @@ class FileExplorerTable(QTableWidget):
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
 class NavigationLayout(QWidget):
-    def __init__(self):
+    def __init__(self, calendar=False):
         try:
             super().__init__()
             self.previousButton=QToolButton()
@@ -11869,17 +12566,27 @@ class NavigationLayout(QWidget):
             self.nextButton.setIcon(QIcon(next_icon))
             self.previousButton.setIconSize(QSize(21, 21))
             self.nextButton.setIconSize(QSize(21, 21))
-            self.previousButton.setFixedSize(44,25)
-            self.nextButton.setFixedSize(44,25)
-            self.previousButton.setStyleSheet("background:white; border: none;")
-            self.nextButton.setStyleSheet("background:white; border: none;")
+            self.previousButton.setFixedSize(44,35)
+            self.nextButton.setFixedSize(44,35)
+            self.previousButton.setStyleSheet("background:white; border: none; margin-top: 1px;")
+            self.nextButton.setStyleSheet("background:white; border: none; margin-top: 1px;")
             self.previousButton.setCursor(QCursor(Qt.PointingHandCursor)) #pointing hand cursor on hover
             self.nextButton.setCursor(QCursor(Qt.PointingHandCursor))
-            self.previousButton.clicked.connect(lambda: self.changeSlctdItem(-1))
-            self.nextButton.clicked.connect(lambda: self.changeSlctdItem(1))
 
-            self.itemsBox=QComboBox()
 
+            if calendar:
+                self.dateEdit=QDateEdit()
+                self.dateEdit.setCalendarPopup(True)
+                self.dateEdit.setDisplayFormat("dd/MMM/yyyy")
+                inputwidget=self.dateEdit
+                #Get last and next week
+                self.previousButton.clicked.connect(lambda: self.dateEdit.setDate(self.dateEdit.date().addDays(-7)))
+                self.nextButton.clicked.connect(lambda: self.dateEdit.setDate(self.dateEdit.date().addDays(7)))
+            else:
+                self.itemsBox=QComboBox()
+                inputwidget=self.itemsBox
+                self.previousButton.clicked.connect(lambda: self.changeItemBoxIndex(-1))
+                self.nextButton.clicked.connect(lambda: self.changeItemBoxIndex(1))
             # self.itemsBox.setStyleSheet("background:white; border: none; color:rgba(0,0,0,0.7); ")
             # font = QFont()
             # # font.setFamily("Microsoft YaHei")
@@ -11891,7 +12598,7 @@ class NavigationLayout(QWidget):
             # self.addStretch()
             self.hlayout=QHBoxLayout()
             self.hlayout.addWidget(self.previousButton)
-            self.hlayout.addWidget(self.itemsBox, alignment=Qt.AlignCenter)
+            self.hlayout.addWidget(inputwidget, alignment=Qt.AlignCenter)
             self.hlayout.addWidget(self.nextButton)
             self.hlayout.addStretch()
             #move the widgets all closer together
@@ -11910,8 +12617,13 @@ class NavigationLayout(QWidget):
                 self.addItem(item)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def changeSlctdItem(self, change):
+    def addItemsWithDatas(self, items):
+        try:
+            for item, itemdata in items.items():
+                self.addItem(item, itemdata)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def changeItemBoxIndex(self, change):
         try:
             newindex=self.itemsBox.currentIndex()+change
             if newindex>=0 and newindex<self.itemsBox.count():
@@ -11923,6 +12635,99 @@ class NavigationLayout(QWidget):
     #     self.label.setText(text)
     # def setToolTip(self, text):
     #     self.label.setToolTip(text)
+
+# class CollapsibleFrame(QWidget):
+#     def __init__(self, parent=None, title=None):
+#         super().__init__(parent)
+
+#         self._is_collapsed = True
+#         self._title_frame = None
+#         self._content, self._content_layout = (None, None)
+
+#         self._main_v_layout = QVBoxLayout(self)
+#         self._main_v_layout.addWidget(self.initTitleFrame(title, self._is_collapsed))
+#         self._main_v_layout.addWidget(self.initContent(self._is_collapsed))
+#         self._main_v_layout.setSpacing(0)
+#         self._main_v_layout.setContentsMargins(0, 0, 0, 0)
+
+#         self.initCollapsable()
+#         self.toggleCollapsed()
+
+#     def initTitleFrame(self, title, collapsed):
+#         self._title_frame = self.TitleFrame(title=title, collapsed=collapsed, parent=self)
+#         return self._title_frame
+
+#     def initContent(self, collapsed):
+#         self._content = QWidget()
+#         self._content_layout = QVBoxLayout()
+
+#         self._content.setLayout(self._content_layout)
+#         self._content.setVisible(not collapsed)
+
+#         return self._content
+
+#     def addWidget(self, widget):
+#         self._content_layout.addWidget(widget)
+
+#     def initCollapsable(self):
+#         self._title_frame.clicked.connect(self.toggleCollapsed)
+
+#     def toggleCollapsed(self):
+#         self._is_collapsed = not self._is_collapsed
+#         self._content.setVisible(self._is_collapsed)
+#         self._title_frame._arrow.setArrow(int(self._is_collapsed))
+
+#     class TitleFrame(QFrame):
+#         clicked = pyqtSignal()
+
+#         def __init__(self, title="", collapsed=False, parent=None):
+#             super().__init__(parent)
+
+#             self.setFrameShape(QFrame.StyledPanel)
+#             self.setFrameShadow(QFrame.Raised)
+#             self.setStyleSheet("QFrame {background-color: #f0f0f0;}")
+#             self._title = title
+#             self._collapsed = collapsed
+
+#             self._hlayout = QHBoxLayout(self)
+#             self._hlayout.setContentsMargins(2, 2, 2, 2)
+#             self._hlayout.setSpacing(0)
+
+#             self._arrow = CollapsibleFrame.Arrow(collapsed=collapsed)
+#             self._titleLabel = QLabel(title)
+
+#             self._hlayout.addWidget(self._arrow)
+#             self._hlayout.addWidget(self._titleLabel)
+
+#         def mousePressEvent(self, event):
+#             self.clicked.emit()
+#             super().mousePressEvent(event)
+
+#     class Arrow(QWidget):
+#         def __init__(self, collapsed=False, parent=None):
+#             super().__init__(parent)
+#             self.setFixedSize(16, 16)
+#             self._collapsed = collapsed
+
+#         def setArrow(self, arrow_dir):
+#             self._collapsed = bool(arrow_dir)
+#             self.update()
+
+#         def paintEvent(self, event):
+#             painter = QPainter(self)
+#             painter.setRenderHint(QPainter.Antialiasing, True)
+#             pen = QPen(QtCore.Qt.NoPen)
+#             painter.setPen(pen)
+#             brush = QBrush(QtCore.Qt.gray)
+#             painter.setBrush(brush)
+
+#             if self._collapsed:
+#                 points = [QtCore.QPointF(4, 6), QtCore.QPointF(12, 6), QtCore.QPointF(8, 10)]
+#             else:
+#                 points = [QtCore.QPointF(6, 4), QtCore.QPointF(10, 8), QtCore.QPointF(6, 12)]
+
+#             polygon = QPolygonF(points)
+#             painter.drawPolygon(polygon)
 
 if __name__ == "__main__":
         # import sys
@@ -12010,6 +12815,7 @@ if __name__ == "__main__":
 
             management_json=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\users_jsons\management.json"
             users_jsons=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\users_jsons"
+            projects_jsons=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\projects_jsons"
             help_json=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\help-info.json"
             
             TemplateFolder= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\Folder Template"
@@ -12079,31 +12885,35 @@ if __name__ == "__main__":
             #e1e5ee
             # widget.setStyleSheet("""QMainWindow{background:rgb(40, 40, 40);}""") #rgb(223, 227, 236)
             widget.setStyleSheet("""QMainWindow{background:rgb(215, 215, 215);}""") #rgb(223, 227, 236)
-            widget.setWindowTitle("RCDC")
+            widget.setWindowTitle(" ")
             initwindow=Init_Window()
             widget.addWidget(initwindow)
 
+            # initwindow.Page.setCurrentIndex(1)
+
         # #     # # toremove (added for test)
-        #     # activeProjectrow=43
         #     activeProjectrow=26 #SHJS
         #     # #     # activeProjectrow=88 #Paxton House
-        #     projectwindow=ProjectWindow()
-        #     feesandfinanceswindow = FeesandFinancesWindow()
-        #     widget.addWidget(feesandfinanceswindow)
-        #     widget.setCurrentWidget(feesandfinanceswindow)
-            # newfeesdialog=NewFees_Dialog()
-            # # widget.showMaximized() 
-            # # newfeesdialog.show()
-        # # #     widget.addWidget(projectwindow)
-        # # #     widget.setCurrentWidget(projectwindow)
+            # activeProjectrow=43
+            # projectwindow=ProjectWindow()
+            # feesandfinanceswindow = FeesandFinancesWindow()
+            # widget.addWidget(feesandfinanceswindow)
+            # widget.setCurrentWidget(feesandfinanceswindow)
+            # newfeesproposaldialog=NewFeesProposal_Dialog()
+            # widget.showMaximized() 
+            # newfeesproposaldialog.show()
+        # #     widget.addWidget(projectwindow)
+        # #     widget.setCurrentWidget(projectwindow)
             
            # # toremove (added for test)
-           ##drawing page 
-            activeProjectrow=43
-            projectwindow=ProjectWindow()
-            resourcewindow=ProjectResourceWindow()
-            widget.addWidget(resourcewindow)
-            widget.setCurrentWidget(resourcewindow)
+        # #    ##drawing page 
+            # activeProjectrow=43
+            # projectwindow=ProjectWindow()
+            # widget.addWidget(projectwindow)
+            # widget.setCurrentWidget(projectwindow)
+            # resourcewindow=ProjectResourceWindow()
+            # widget.addWidget(resourcewindow)
+            # widget.setCurrentWidget(resourcewindow)
             # calculationswindow=CalculationsWindow()
             # widget.addWidget(calculationswindow)
             # widget.setCurrentWidget(calculationswindow)
@@ -12160,7 +12970,7 @@ if __name__ == "__main__":
             # QFontDatabase.addApplicationFont(SpaceGrotesk_font)
             app.setFont(QFont("Work Sans", 9))
             app.setWindowIcon(QIcon(RCDC_icon))
-            widget.setWindowIcon(QIcon(RCDC_icon))
+            # widget.setWindowIcon(QIcon(RCDC_icon))
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
         exit(app.exec_())
