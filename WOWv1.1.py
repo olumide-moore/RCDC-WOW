@@ -125,7 +125,16 @@ def fetchAllResources(includeHolidays=False):
     try:
         def getHolidays():
             try:
-                pass
+                userHolidays=[]
+                for usr in json_data["employees"]:
+                    userHolidays.extend(list(map(lambda x: (x['for'], x['daysTaken'],x['start'], x['end']), usr['holidays'])))
+                userHolidays= pd_DataFrame(userHolidays, columns=["for","daysTaken","start","end"])
+                generalholidays= pd_DataFrame(json_data["generalholidays"], columns=["for","daysTaken","start","end"])
+                holidays=pd_concat([userHolidays,generalholidays], ignore_index=True)
+                if not holidays.empty: 
+                    holidays["start"]= pd_to_datetime(holidays["start"], dayfirst=True)
+                    holidays["end"]= pd_to_datetime(holidays["end"], dayfirst=True)
+                return holidays
             except:
                 MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
         global Resources_df
@@ -143,7 +152,9 @@ def fetchAllResources(includeHolidays=False):
                         data = json_load(json_file)
                         data["filename"]=path.basename(filepath)
                         all_resources.append(data)
-        holidays=getHolidays()
+        if includeHolidays==True: 
+            global Resources_holidays_df
+            Resources_holidays_df=getHolidays()
         Resources_df= pd_DataFrame(all_resources)
         if not Resources_df.empty: Resources_df.sort_values(by=["RscFor","OpenDate"], inplace=True)
                 # for file in listdir(users_jsons+"\\"+folder+"\\Resources"):
@@ -315,8 +326,8 @@ class Admin_Dialog(QDialog):
             self.this_projectlead=projectsTable.item(projectindex,projectsTable.columnLabels.index("Lead")).text()
             self.this_projectdirector=projectsTable.item(projectindex,projectsTable.columnLabels.index("Director")).text()
             self.this_projectteam=projectsTable.item(projectindex,projectsTable.columnLabels.index("Team")).text()
-            self.this_project3lettercode= project3name_dict[project]
-            self.this_projectstage=RIBAstages[project]
+            self.this_project3lettercode= glob_Project3Code_dict[project]
+            self.this_projectstage=glob_ProjectRIBAstages[project]
             self.logoupdated=False
         
             self.setMaximumSize(500,600)
@@ -382,13 +393,13 @@ class Admin_Dialog(QDialog):
             self.projectNoEdit.setEnabled(False)
 
             self.projectClientBox=  QComboBox()
-            self.projectClientBox.addItems(clients) #clients is a list which has been populated from the init window
+            self.projectClientBox.addItems(glob_ProjectClients) #clients is a list which has been populated from the init window
             self.projectClientBox.setEditable(True)
             self.projectClientBox.setCurrentText(self.this_projectclient)# if ThisProject_client != '' else self.projectClientBox.setCurrentText('xxxx')
             # self.projectClientBox.setEnabled(False)#disable the box until you click the edit button
 
             self.projectArchitectBox= QComboBox()
-            self.projectArchitectBox.addItems(architects)
+            self.projectArchitectBox.addItems(glob_ProjectArchitects)
             self.projectArchitectBox.setEditable(True)
             self.projectArchitectBox.setCurrentText(self.this_projectarchitect) if self.this_projectarchitect != '' else self.projectArchitectBox.setCurrentText('')
             # self.projectArchitectBox.setEnabled(False)
@@ -468,6 +479,7 @@ class Admin_Dialog(QDialog):
             self.form.setHorizontalSpacing(30)
             self.formGroupBox = QGroupBox()
             self.formGroupBox.setLayout(self.form) 
+            
             
             buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             buttonBox.accepted.connect(self.funcOK)
@@ -617,7 +629,7 @@ class Admin_Dialog(QDialog):
                     updateProject=True
                     #Check for the project code
                     projectsWithSameCode=[]
-                    for k, v in project3name_dict.items():
+                    for k, v in glob_Project3Code_dict.items():
                         if v not in [None, '', 'XXX'] and v== self.Letter3CodeEdit.text() and k!=self.this_projectfoldername: #if the project code has been set for another project
                             projectsWithSameCode.append(k.split(' - ',1)[1])
                     if len(projectsWithSameCode)>0:
@@ -828,9 +840,9 @@ class ProjectTeamTable(QGroupBox):
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
 class ResourceManager():
-    def __init__(self, include_toolbuttons=False, include_period=False,include_table=False, include_chart=False,refreshResources=None, project=None, include_usersFilter=False, include_statistics=False, updateDisplay=True):
+    def __init__(self, include_toolbuttons=False, include_period=False,include_table=False, include_chart=False,refreshResources=None, project=None, include_usersFilter=False, include_statistics=False, updateDisplay=True, include_projectstatus_checkbox=False):
         try:
-            self.include_toolbuttons, self.include_period, self.include_table, self.include_chart, self.refreshResources, self.project, self.include_usersFilter, self.include_statistics= include_toolbuttons, include_period, include_table, include_chart, refreshResources, project, include_usersFilter, include_statistics
+            self.include_toolbuttons, self.include_period, self.include_table, self.include_chart, self.refreshResources, self.project, self.include_usersFilter, self.include_statistics, self. include_projectstatus_checkbox= include_toolbuttons, include_period, include_table, include_chart, refreshResources, project, include_usersFilter, include_statistics, include_projectstatus_checkbox
             self.all_resources_df= Resources_df
             if self.project:
                 self.project_resources_df= self.getRscForProject(self.project)
@@ -856,7 +868,7 @@ class ResourceManager():
           #Period layouts
             if self.include_period:
                 self.periodLayout=QGridLayout()
-                self.periodAllRadioButton=QPushButton("All")
+                self.periodAllRadioButton=QPushButton("Overall")
                 self.periodAllRadioButton.setCheckable(True)
                 self.periodAllRadioButton.setChecked(True)
                 self.activePeriodButton=self.periodAllRadioButton
@@ -903,7 +915,6 @@ class ResourceManager():
                     box.setStyleSheet("""QComboBox, QDateEdit{font-size:16px; padding-left:10px; padding-right:10px; color:rgba(0, 0, 0,1);}
                                       """)
 
-
                 self.periodLayout.addWidget(self.periodAllRadioButton,1,0)#,alignment=Qt.AlignCenter)
                 self.periodLayout.addWidget(self.periodWeekRadioButton,1,1)#,alignment=Qt.AlignCenter)
                 self.periodLayout.addWidget(self.periodMonthRadioButton,1,2)#,alignment=Qt.AlignCenter)
@@ -921,7 +932,7 @@ class ResourceManager():
 
             # periodLayout.setSpacing(0)
             
-            self.resourcePeriodFilter=("All",None)
+            self.resourcePeriodFilter=("Overall",None)
           #Resources table and chart
             if self.include_table:
                 self.resourceTable=ResourceTable(self.refreshResources)
@@ -929,7 +940,10 @@ class ResourceManager():
                 self.populateTable()
                 self.resourceTable.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             if self.include_chart:
-                self.resourceChart=ResourceChart()
+                self.resourceChart=ResourceChart(include_projectstatus_checkbox=self.include_projectstatus_checkbox)
+                # if self.include_projectstatus_checkbox:
+                #     self.resourceChart.projectstatus_checkbox.on_clicked(self.switchChartProjectStatus)
+
                 self.resourceChart.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
           #Statistics
             if self.include_statistics:
@@ -951,7 +965,6 @@ class ResourceManager():
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-
     def radioClicked(self, button):
         try:
             # print(button.text())
@@ -961,12 +974,13 @@ class ResourceManager():
             self.periodChanged()                   
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
     def periodChanged(self):
         try:
             period= self.activePeriodButton
-            if period=="All":
+            if period=="Overall":
                 self.period_stackedWidget.setCurrentIndex(0)
-                self.resourcePeriodFilter=("All",None)
+                self.resourcePeriodFilter=("Overall",None)
                 #update table
             elif period=="Weekly":
                 self.period_stackedWidget.setCurrentIndex(1)
@@ -1000,6 +1014,7 @@ class ResourceManager():
     
     def filterTable(self):
         try:
+            self.resourceTable.setSortingEnabled(False)
             # print("Filtering table")
             ##This function filters the table based on the selected user and period
             #Clear the resource search box             
@@ -1038,16 +1053,22 @@ class ResourceManager():
                     if when not in self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).data(257):
                         self.resourceTable.setRowHidden(row,True)
                     else:
+                        #just show the hours for the week as in the data 256 which has been approximated when table was populated
                         self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256)}")
             elif period=="Monthly":
                 for row in rows:
+                    #get the number of times the resource is available in the month
                     count= sum(1 for dat in self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).data(257) if dat[3:]==when)
                     # if not list(filter(lambda x: when == x[3:],weeks)):
                     if count<=0:
                         self.resourceTable.setRowHidden(row,True)
                     else:
-                        self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256) * count}")
+                        #for the month, show the total hours for the month (weeks*hours rounded to max 2 decimal places)
+                        monthhours= round(self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256) * count,2)
+                        monthhours= int(monthhours) if monthhours==int(monthhours) else monthhours
+                        self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{monthhours}")
             else:
+                #All period (including past weeks)
                 for row in rows:
                     if self.resourceTable.isRowHidden(row)==False:
                         # print(row, self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")))
@@ -1055,13 +1076,22 @@ class ResourceManager():
                         if len(weeks)<=0:
                             self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256)}")
                         else:
-                            self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256) * len(weeks)}")
+                            #for all weeks, show the total hours for all weeks (weeks*hours rounded to max 2 decimal places)
+                            allhours= round(self.resourceTable.item(row,self.resourceTable.columnLabels.index('Hours')).data(256) * len(weeks),2)
+                            allhours= int(allhours) if allhours==int(allhours) else allhours
+                            self.resourceTable.item(row,self.resourceTable.columnLabels.index("Hours")).setText(f"{allhours}")
             # self.actionsWidget.actionsProjectBox.blockSignals(True)
             # self.actionsWidget.actionsProjectBox.setCurrentText("All projects")
             # self.actionsWidget.actionsProjectBox.blockSignals(False)
 
-           
+            self.resourceTable.setSortingEnabled(True)
 
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def switchChartProjectStatus(self):
+        try:
+            print("Switching project status")
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -1083,7 +1113,7 @@ class ResourceManager():
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    def filterData(self, data):
+    def filterDataforChartandStats(self, data):
         try:
             #Filter the data to get open resources based on the selected user and period and adjust the hours
             df= data.copy()
@@ -1093,17 +1123,38 @@ class ResourceManager():
                 user=self.usersFilterBox.currentText()
                 if user!="All users":
                     df= df[df['RscFor']==user]
-            if df.empty: return df
+                    
+                    holidays=Resources_holidays_df[Resources_holidays_df['for'].isin([user, 'General'])]
+            else:
+                user="All users"
+                # holidays=Resources_holidays_df[Resources_holidays_df['for']=='General']
+                holidays=pd_DataFrame(columns=["for","daysTaken","start","end"])
+            if df.empty and holidays.empty: return df #if there are no resources and no holidays
             period, when= self.resourcePeriodFilter
-            if period=="All":
+            if period=="Overall" and not df.empty: #if all resources are to be displayed and there are resources
+                #current week first day
+                cur_week= pd_to_datetime(self.getFirstDayOfWeek(QDate.currentDate()).toString())
+                # remove the weeks that are in the past based on the first day of current week
+                df['Weeks']= df['Weeks'].apply(lambda x: [date for date in x if pd_to_datetime(date, dayfirst=True) >= cur_week])
                 df['Hours']=  df.apply(lambda x: len(x['Weeks']) * x['Hours'] if x['Weeks'] else x['Hours'], axis=1)
             elif period=="Weekly":
                 df= df[df['Weeks'].apply(lambda x: when in x)]
+                if user!="All users":
+                    weekstart= pd_to_datetime(when, dayfirst=True)
+                    weekend= weekstart + timedelta(days=4)
+                    overlapping_holidays= holidays[(holidays['start']<=weekstart) & (holidays['end']>=weekstart) | (holidays['start']<=weekend) & (holidays['end']>=weekend)] #get holidays that overlap with the week
+                    if not overlapping_holidays.empty: #if there are overlapping holidays
+                        overlapping_holidays= overlapping_holidays.apply(lambda row: (min(row['end'], weekend) - max(row['start'], weekstart)).days + 1, axis=1).sum() #get the total number of days off for the week
+                        df=pd_concat([df, pd_DataFrame({'RscFor':user, 'Hours': overlapping_holidays, 'ProjectName':'Holidays', 'Weeks': [when],'TaskDesc': f'{overlapping_holidays} day(s) off'})])
             elif period=="Monthly":
                 df['Weeks'] = df['Weeks'].apply(lambda x: [date for date in x if date[3:]==when])
                 df= df[df['Weeks'].map(len) > 0]
                 df['Hours'] = df['Hours'] * df['Weeks'].map(len)
             elif period=="Look ahead":
+                #current week first day
+                cur_week= pd_to_datetime(self.getFirstDayOfWeek(QDate.currentDate()).toString())
+                # remove the weeks that are in the past based on the first day of current week
+                df['Weeks']= df['Weeks'].apply(lambda x: [date for date in x if pd_to_datetime(date, dayfirst=True) >= cur_week])
                 return df
             return df
         except:
@@ -1113,9 +1164,9 @@ class ResourceManager():
         try:
             if self.include_table: self.filterTable()
             if self.project:
-                filteredData= self.filterData(self.project_resources_df)
+                filteredData= self.filterDataforChartandStats(self.project_resources_df)
             else:
-                filteredData= self.filterData(self.all_resources_df)
+                filteredData= self.filterDataforChartandStats(self.all_resources_df)
             if self.include_chart: self.updateChart(filteredData)
             if self.include_statistics: self.updateStatistics(filteredData)
         except:
@@ -1154,7 +1205,10 @@ class ResourceManager():
                         # busyness
                         pass
                     else:
-                        busyness= (df["Hours"].sum()/37.5)*100
+                        totalhours=37.5
+                        if 'Holidays' in df['ProjectName'].values:
+                            totalhours-= df[df['ProjectName']=='Holidays']['Hours'].sum() #subtract holidays from total hours
+                        busyness= (df[df['ProjectName']!='Holidays']['Hours'].sum()/totalhours)*100 #get the total hours left for the week, excluding holidays
                         self.busynessValue.setHidden(False)
                         self.busynessValue.setText(f"Busyness: {busyness:.1f}%")
                 # elif period=="Monthly":
@@ -1242,16 +1296,16 @@ class ResourceDialog(QDialog):
             self.personBox.addItems([emp for emp in RCDC_employees if path.exists(users_jsons+"\\"+emp)])
 
             self.projectBox=QComboBox()
-            for proj in project3name_dict: #Add lists of projects from the project3name_dict dicitonary
-                self.projectBox.addItem(proj,[project3name_dict[proj],proj.split(' - ',1)[0]])
-            self.projectBox.currentIndexChanged.connect(lambda: self.stageBox.setCurrentText(RIBAstages.get(self.projectBox.currentText(),"XX")))
+            for proj in glob_Project3Code_dict: #Add lists of projects from the glob_Project3Code_dict dicitonary
+                self.projectBox.addItem(proj,[glob_Project3Code_dict[proj],proj.split(' - ',1)[0]])
+            self.projectBox.currentIndexChanged.connect(lambda: self.stageBox.setCurrentText(glob_ProjectRIBAstages.get(self.projectBox.currentText(),"XX")))
             self.weekBox=CheckableComboBox('Resource Weeks')
             self.weekBox.setMaximumWidth(500)
 
             self.hoursBox=QDoubleSpinBox()
             self.hoursBox.setGroupSeparatorShown(True)
             self.hoursBox.setRange(0,1000000)
-            self.hoursBox.setDecimals(1)
+            self.hoursBox.setDecimals(2)
             self.hoursBox.setSuffix("hr")
 
             self.stageBox=QComboBox()
@@ -1398,7 +1452,7 @@ class ResourceDialog(QDialog):
                 
             self.projectBox.setCurrentText(f"{resourceObj['ProjectNo']} - {resourceObj['ProjectName']}")
             self.projectBox.setEnabled(False)
-            self.hoursBox.setValue(float(resourceObj["Hours"]))
+            self.hoursBox.setValue(resourceObj["Hours"])
             self.stageBox.setCurrentText(resourceObj["Stage"])
             self.taskDescBox.setText(resourceObj["TaskDesc"])
             # self.weekBox.handleItemPressed(2)
@@ -1464,6 +1518,7 @@ class ResourceTable(QTableWidget):
 
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
     def populateTable(self, projectResources):
         try:           
             #Populate the table 
@@ -1478,8 +1533,11 @@ class ResourceTable(QTableWidget):
                 self.item(r,self.columnLabels.index("Individual")).setData(258,rsc['EditBy'])
                 self.setItem(r,self.columnLabels.index("Project No."), QTableWidgetItem(rsc['ProjectNo']))
                 self.setItem(r,self.columnLabels.index("Project Name"), QTableWidgetItem(rsc['ProjectName']))
-                hours= int(rsc['Hours']) if float(rsc['Hours']) == int(rsc['Hours']) else rsc['Hours']
-                self.setItem(r,self.columnLabels.index("Hours"),QTableWidgetItem(f"{hours}"))
+                if rsc['ProjectName']=="Borthwen ": print(rsc['filename'], rsc['ProjectName']+'!')
+                # hours= int(rsc['Hours']) if float(rsc['Hours']) == int(rsc['Hours']) else rsc['Hours'] #if hours is a whole number, convert to int
+                hours =round(rsc['Hours'],2)
+                hours= int(hours) if hours == int(hours) else hours #if hours is a whole number, convert to int
+                self.setItem(r,self.columnLabels.index("Hours"),NumericalTableWidgetItem(f"{hours}"))
                 self.item(r,self.columnLabels.index("Hours")).setData(256,hours)
                 self.item(r,self.columnLabels.index("Hours")).setData(257,rsc['Weeks'])
                 self.item(r,self.columnLabels.index("Hours")).setTextAlignment(Qt.AlignCenter)
@@ -1644,14 +1702,18 @@ class ResourceTable(QTableWidget):
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
 class ResourceChart(QWidget):
-    def __init__(self):
+    def __init__(self, include_projectstatus_checkbox=False):
         try:
             super().__init__()
             # self.resources=resources
             # plt.style.use('seaborn')
             # self.setMinimumWidth(1000)
+            self.include_projectstatus_checkbox=include_projectstatus_checkbox
+            
             self.layout = QVBoxLayout(self)
             self.canvas = FigureCanvas()
+
+            
             self.layout.addWidget(self.canvas)
 
             self.toolbar = NavigationToolbar(self.canvas)
@@ -1673,7 +1735,17 @@ class ResourceChart(QWidget):
         try:
             # plt.close()
             df=resources_df.copy()
+            #check fig size
+            if len(self.canvas.figure.get_axes())>1:
+                self.canvas.figure.axes[1]=None
             self.canvas.figure.clear()
+            self.canvas.figure.dpi=100
+            print(self.canvas.figure.dpi)
+            #remove the checkbuttons if they exist
+            # plt.close()
+            # fig= plt.figure(figsize=(8, 6))
+            # fig= plt.figure()
+            # self.canvas.figure=fig
             if lookAhead:
                 self.updateChartForLookAhead(df)
             elif user=="All users":
@@ -1716,7 +1788,7 @@ class ResourceChart(QWidget):
             elif period=="Monthly":
                 ax.set_title(f'Team Monthly Hours - {datetime.strptime(when, "%m/%Y").strftime("%B %Y")}')
             else:
-                ax.set_title('Team Overall Hours')
+                ax.set_title('Team Overall Hours Left')
             # # ax.grid(True)
             # # Custom legend
             # # Create a list of labels from 'TaskDesc' corresponding to the order in pivot_df
@@ -1724,6 +1796,18 @@ class ResourceChart(QWidget):
 
             # # Create a custom legend
             # ax.legend(task_labels, title='Task Description')
+            if self.include_projectstatus_checkbox: 
+                #set the checkbuttons text to chart ylabels
+                # users_hours= self.all_resources_df.groupby("RscFor")["Hours"].sum()
+                # check = CheckButtons(plt.axes(rect), users_hours.index.tolist(), [True] * len(users_hours))
+                # rax=plt.axes(rect)
+                rax=self.canvas.figure.add_axes([0.8, 0.89, 0.09, 0.1])
+                # rax=self.resourceChart.canvas.figure.axes(rect)
+                self.projectstatus_checkbox = CheckButtons(rax, ["Live", "Bid"], [True] * 2)
+
+
+            
+
             self.canvas.draw()
 
             # # Show the plot
@@ -1739,6 +1823,10 @@ class ResourceChart(QWidget):
             if len(df)==0:
                 self.canvas.draw()
                 return
+            var= df['ProjectName'].unique()
+            if 'Holidays' in var: 
+                #set it as the first element by setting really early date
+                df.loc[df['ProjectName'] == 'Holidays', 'OpenDate'] = '01/01/1900 00:00:00'
             df=df.sort_values(['OpenDate'])
             df=df.reset_index(drop=True)
             df['CumulativeHours'] = df['Hours'].cumsum() #Create a new column for cumulative hours
@@ -1751,12 +1839,15 @@ class ResourceChart(QWidget):
             ax= self.canvas.figure.subplots()
 
             #get set of projects
-            var= df['ProjectName'].unique()
             if len(var)<=10:
                 cmap = plt.get_cmap('tab10')
             else:
                 cmap = plt.get_cmap('tab20')
             color_dict= {proj: cmap(i% cmap.N) for i, proj in enumerate(var)}
+            if 'Holidays' in var:   
+                #set a distinct color for holidays
+                color_dict['Holidays'] = 'lightgray'
+
             df['color'] = df['ProjectName'].map(color_dict)
 
             ax.barh(df.index,df.Hours, left=df.StartHour, color=df.color, edgecolor='black', linewidth=0.5, height=1.0, alpha=0.7,picker=4)
@@ -1794,7 +1885,7 @@ class ResourceChart(QWidget):
             elif period=="Monthly":
                 ax.set_title(f'{user} Monthly Hours - {datetime.strptime(when, "%m/%Y").strftime("%B %Y")}')
             else:
-                ax.set_title(f'{user} Overall Hours')
+                ax.set_title(f'{user} Overall Hours Left')
             # my_xlim=(0,30)
             # ax.set_xlim(my_xlim)
             #Legends based on the project
@@ -1814,6 +1905,10 @@ class ResourceChart(QWidget):
 
     def updateChartForLookAhead(self, df):
         try:
+            def get_clean_number(x):
+                '''Get number as int if int, else float without trailing zeros'''
+                if x==int(x): return int(x)
+                else: return round(x,2) 
             if df.empty: 
                 self.canvas.draw()
                 return
@@ -1823,7 +1918,7 @@ class ResourceChart(QWidget):
                 self.canvas.draw()
                 return
             # exploded_weeks= df.explode("Weeks").dropna()
-            df["Weeks"]= df['Weeks'].apply(lambda x: datetime.strptime(x, "%d/%m/%Y").date())
+            df["Weeks"]= df['Weeks'].apply(lambda x: pd_to_datetime(x, dayfirst=True))
             grouped= df.groupby(['Weeks', 'RscFor'])['Hours'].sum().reset_index()
             pivot_table = grouped.pivot(index='Weeks', columns='RscFor', values='Hours').fillna(0)
 
@@ -1837,6 +1932,12 @@ class ResourceChart(QWidget):
             # colors = {user: cmap(i% cmap.N) for i, user in enumerate(pivot_table.columns)}
 
             pivot_table.plot(kind='barh', stacked=True, ax=ax, edgecolor='black', linewidth=0.5, color=cmap.colors, alpha=0.7)
+
+            for container in ax.containers:
+                # Label each individual segment with the hours if it's greater than 0, else no label
+                labels = [f'{get_clean_number(v.get_width())}' if v.get_width() != 0 else '' for v in container]
+                ax.bar_label(container, labels=labels, label_type='center', padding=3, fontsize=8)
+
             ax.set_xlabel('Hours')
             ax.set_ylabel('Week')
 
@@ -1851,13 +1952,14 @@ class ResourceChart(QWidget):
             #         # ax.barh(i, value, height=0.4, left=left, color=colors[col], edgecolor='black', linewidth=0.5) 
             #         bottom += value
 
-
             ax.invert_yaxis()  # labels read top-to-bottom
         
             self.canvas.draw()
 
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+
 
 class ProjectsDeadlineWidget(QWidget):
     def __init__(self):
@@ -2096,16 +2198,17 @@ class ProjectsWidget(QWidget):
             cursor.close()
             conn.close()    #Close cursor and connection
             #Get lists of clients, architects...
-            global clients, architects, RIBAstages, project3name_dict #These lists and dictionaries are useful later on
-            clients=[]
-            architects= []
-            project3name_dict={}
-            RIBAstages  = {}
+            global glob_ProjectClients, glob_ProjectStatus_dict, glob_ProjectArchitects, glob_ProjectRIBAstages, glob_Project3Code_dict #These lists and dictionaries are useful later on
+            glob_ProjectClients=[]
+            glob_ProjectArchitects= []
+            glob_Project3Code_dict={}
+            glob_ProjectStatus_dict = {}
+            glob_ProjectRIBAstages  = {}
             for d in range(len(data)):
                 if data[d].ProjectCode != None and data[d].ProjectCode != '':  #Populate 'projecgt3name_dict' dictionary that was declared at the top with all three-letter codes if the three-letter code field isn't empty, otherwise set the three letter-code as 'XXX' in the dictionary
-                    project3name_dict[data[d].ProjectNo+' - '+data[d].ProjectName]=str(data[d].ProjectCode)
+                    glob_Project3Code_dict[data[d].ProjectNo+' - '+data[d].ProjectName]=str(data[d].ProjectCode)
                 else:
-                    project3name_dict[data[d].ProjectNo+' - '+data[d].ProjectName] ='XXX'
+                    glob_Project3Code_dict[data[d].ProjectNo+' - '+data[d].ProjectName] ='XXX'
           
           #Creating the table for the projects
             #(ignore the first 7 projects as these are not actual projects i.e. general,innovation,marketing,e.t.c)
@@ -2126,19 +2229,20 @@ class ProjectsWidget(QWidget):
             for d in range(len(data)): 
                 projectsTable.setItem(d,projectsTable.columnLabels.index("Project"),QTableWidgetItem(data[d].ProjectNo+' - '+data[d].ProjectName)) # Set table column 0 as the record's field ProjectName (index 0 refers to column 1 and so on)
                 projectsTable.setItem(d,projectsTable.columnLabels.index("Client"),QTableWidgetItem(data[d].Client)) # Set table column 1 as the record's field Client
-                if data[d].Client not in clients and data[d].Client not in [None,'']: #Populate 'clients' list that was declared at the top with all clients if client not already in the list and if the client field isn't empty
-                    clients.append(data[d].Client)
+                if data[d].Client not in glob_ProjectClients and data[d].Client not in [None,'']: #Populate 'glob_ProjectClients' list that was declared at the top with all clients if client not already in the list and if the client field isn't empty
+                    glob_ProjectClients.append(data[d].Client)
                 projectsTable.setItem(d,projectsTable.columnLabels.index("Status"),QTableWidgetItem(data[d].Status)) # Set table column 2 as the record's field Status
+                glob_ProjectStatus_dict[data[d].ProjectNo+' - '+data[d].ProjectName] = data[d].Status
                 if data[d].Status=="Live":
                     projectsTable.item(d,projectsTable.columnLabels.index("Status")).setBackground(QColor(0, 255, 0, 15))
-                if data[d].Architect not in architects and data[d].Architect not in [None,'']: #Populate 'architects' list that was declared at the top with all architects if architect not already in the list and if the architect field isn't empty
-                    architects.append(data[d].Architect)
+                if data[d].Architect not in glob_ProjectArchitects and data[d].Architect not in [None,'']: #Populate 'glob_ProjectArchitects' list that was declared at the top with all architects if architect not already in the list and if the architect field isn't empty
+                    glob_ProjectArchitects.append(data[d].Architect)
                 projectsTable.setItem(d,projectsTable.columnLabels.index("Architect"),QTableWidgetItem(data[d].Architect)) # Set table column 3 as the record's field Status
                 projectsTable.setItem(d,projectsTable.columnLabels.index("Lead"),QTableWidgetItem(data[d].ProjectLead)) # Project Lead
                 projectsTable.setItem(d,projectsTable.columnLabels.index("Director"),QTableWidgetItem(data[d].ProjectDirector)) # Project Director"))
                 projectsTable.setItem(d,projectsTable.columnLabels.index("Team"),QTableWidgetItem(data[d].Team)) # Team
                 projectsTable.setItem(d,projectsTable.columnLabels.index("Key People"),QTableWidgetItem(data[d].KeyPeople)) # Key People
-                RIBAstages[data[d].ProjectNo+' - '+data[d].ProjectName]=str(data[d].RIBAStage)#Populate 'RIBAStage' dictionary that was declared at the top with all riba stages
+                glob_ProjectRIBAstages[data[d].ProjectNo+' - '+data[d].ProjectName]=str(data[d].RIBAStage)#Populate 'RIBAStage' dictionary that was declared at the top with all riba stages
 
             projectsTable.setColumnHidden(projectsTable.columnLabels.index("Architect"),True)            #hide architect coloumn
             # projectsTable.setColumnHidden(projectsTable.columnLabels.index("Lead"),True)         #hide project lead coloumn
@@ -2245,6 +2349,7 @@ class ProjectsWidget(QWidget):
             infoFormWidget=QWidget()
             infoFormWidget.setStyleSheet("QWidget{background:white;}")
             infoFormWidget.setLayout(hl)
+            infoFormWidget.setMaximumHeight(100)
             # infoFormWidget.setMaximumWidth(600)
             # infoFormWidget.setMaximumHeight(100)
 
@@ -2285,7 +2390,7 @@ class ProjectsWidget(QWidget):
             # projectsInfoLayout.addSpacing(30)
             projectsInfoLayout.addLayout(self.slctdProjectLabelLayout)#, Qt.AlignCenter)
             projectsInfoLayout.addWidget(infoFormWidget)
-            projectsInfoLayout.addWidget(self.projectInfoTabWidget,2)
+            projectsInfoLayout.addWidget(self.projectInfoTabWidget,5)
             # projectsInfoLayout.addStretch()
             projectsInfoLayout.setSpacing(10)
 
@@ -2474,7 +2579,7 @@ class ProjectsWidget(QWidget):
     def CreateInvoicesClicked(self):
         try:
             Projects={}
-            for proj in project3name_dict:
+            for proj in glob_Project3Code_dict:
                 no, name=proj.split(" - ",1)
                 Projects[no]=name
             invoice_data=list()
@@ -2790,7 +2895,7 @@ class ProjectsWidget(QWidget):
                 self.slctdProjectLead.setText(projectsTable.item(self.slctdProjectIndex,projectsTable.columnLabels.index("Lead")).text())
                 self.slctdProjectDirector.setText(projectsTable.item(self.slctdProjectIndex,projectsTable.columnLabels.index("Director")).text())
                 self.slctdProjectTeam.setText(projectsTable.item(self.slctdProjectIndex,projectsTable.columnLabels.index("Team")).text())
-                self.slctdProjectStage.setText(RIBAstages[project])
+                self.slctdProjectStage.setText(glob_ProjectRIBAstages[project])
                 
                 # self.slctdProjectName.setFixedWidth(self.slctdProjectName.fontMetrics().boundingRect(text).width()+40)
                 # self.projectsDeadlineWidget.populateTable(project)
@@ -2845,7 +2950,7 @@ class ResourceTabWidget(QWidget):
     def __init__(self, adminbuttons):
         try:    
             super().__init__()
-            self.rscManager=ResourceManager(include_toolbuttons=True, include_period=True,include_table=True, include_chart=True, refreshResources=self.refreshResourceWindow, include_usersFilter=True, include_statistics=True)
+            self.rscManager=ResourceManager(include_toolbuttons=True, include_period=True,include_table=True, include_chart=True, refreshResources=self.refreshResourceWindow, include_usersFilter=True, include_statistics=True, include_projectstatus_checkbox=True)
             
             # busynessLayout=QGridLayout()
             # # busynessLayout.addWidget(self.rscManager.busynessLabel, 0, 0)
@@ -2883,7 +2988,7 @@ class ResourceTabWidget(QWidget):
     def refreshResourceWindow(self):
         try:
             global Resources_df
-            fetchAllResources(includeHolidays=True)
+            fetchAllResources()
             self.rscManager.resetResources()
             self.rscManager.populateTable()
             self.rscManager.updateAllDisplay()
@@ -3135,12 +3240,12 @@ class NewProject_Dialog(QDialog):
             # for client in data:
             #     if client[1] not in clients and client[1] !=None:
             #         clients.append(client[1])
-            self.projectClientBox.addItems(clients) # clients is a global list populated from the init_window
+            self.projectClientBox.addItems(glob_ProjectClients) # glob_ProjectClients is a global list populated from the init_window
             self.projectClientBox.setEditable(True)
             self.projectClientBox.setCurrentText("")
             
             self.projectArchitectsBox= QComboBox(self)
-            self.projectArchitectsBox.addItems(architects)
+            self.projectArchitectsBox.addItems(glob_ProjectArchitects)
             self.projectArchitectsBox.setEditable(True)
             # self.projectArchitectsBox.setEnabled(False)
 
@@ -4466,7 +4571,7 @@ class Management_Window(QMainWindow):
                 if int(year)==date.today().year:
                     text+=f"<br><plaintext>Remaining: {str(usrinfo['remainingannualholidays']).rstrip('0').rstrip('.')}</plaintext>"
                     if usrinfo['remainingcarriedholidays']>0:
-                        text+=f"&nbsp;&nbsp;&nbsp;&nbsp;<plaintext> Carried over:  {str(usrinfo['remainingcarriedholidays']).rstrip('0').rstrip('.')}</plaintext>"
+                        text+=f"&nbsp;&nbsp;&nbsp;&nbsp;<plaintext> Carried over:  {str(usrinfo['remainingcarriedholidays']).rstrip('0').rstrip('.')} (expires {json_data['carriedholidaysdue']})</plaintext>"
                     self.userHolidaysHealth.setText(text)
                 else:
                     if year in usrinfo['comingyearsholidaystaken']:
@@ -5600,7 +5705,7 @@ class DrawingsandSketchesWindow(QMainWindow):
                                     rowno+=1
                             self.table.selectRow(SSrow)
                             self.openfile(self.table)#fold SS 
-                        if stage!=RIBAstages[ThisProject_no+' - '+ ThisProject_name]:#If this stage is not the current stage for this project, collapse it  
+                        if stage!=glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]:#If this stage is not the current stage for this project, collapse it  
                             self.table.selectRow(stagerow)
                             self.openfile(self.table)#fold stages
                     self.table.itemSelectionChanged.connect(lambda: self.selection_changed())
@@ -5769,7 +5874,9 @@ class DrawingsandSketchesWindow(QMainWindow):
                     for i in selectionindexes: # for each selected items, delete records from access where theres same PreName(Drawing no) and PostName(Drawing title)
                         if tableobj.columnSpan(i,1)==1: # if this is a drawing created by the app (which would be in Access database)
                             self.toDelete= 'Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".pdf"
-                            cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = '"+ str(tableobj.item(i,1).text()) + "' AND PostName = '"+ str(tableobj.item(i,2).text()) + "')")
+                            prename= str(tableobj.item(i,1).text())
+                            postname= str(tableobj.item(i,2).text())
+                            cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = ? AND PostName = ?)",(prename,postname))
                         elif tableobj.columnSpan(i,1)==2:
                             for k in range(i-1,-1,-1):
                                 if tableobj.columnSpan(k,1)==3:
@@ -6024,14 +6131,14 @@ class DrawingsandSketchesWindow(QMainWindow):
         try:
             if path.exists(Project_Database)==True:
                 #Check if this project has a valid Riba stage
-                if is_int(RIBAstages[ThisProject_no+' - '+ ThisProject_name])  or RIBAstages[ThisProject_no+' - '+ ThisProject_name]=='XX':
+                if is_int(glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])  or glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]=='XX':
                     #Call new drawing class and Show new drawing page
                     global newdrawingdialog
                     newdrawingdialog=NewDrawing_Dialog(toRemove)
                     
                     newdrawingdialog.exec()
                 else:
-                    MsgBox("You need to set a valid RIBA stage for this project\nCurrent stage: "+RIBAstages[ThisProject_no+' - '+ ThisProject_name],setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                    MsgBox("You need to set a valid RIBA stage for this project\nCurrent stage: "+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name],setWindowTitle="Error", setIcon = QMessageBox.Critical)
             else:
                 MsgBox("The PROJECT ADMIN DATABASE was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -6340,7 +6447,7 @@ class NewDrawing_Dialog(QDialog):
             super().__init__()
             # self.resize(500,500) #Window width and height
          #Check if this project three-letter code has been set, and give error msg if not
-            if project3name_dict[ThisProject_foldername] =='XXX':
+            if glob_Project3Code_dict[ThisProject_foldername] =='XXX':
                 MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'",setWindowTitle="Note:", setIcon = QMessageBox.Information)
          #Create Dropdowns and fill them
             self.Level = QLabel('Levels', self)
@@ -6364,7 +6471,7 @@ class NewDrawing_Dialog(QDialog):
             self.ProjectNameEdit.setEnabled(False)
             self.ProjectClient= QLabel('Client:', self)
             self.ProjectClientBox= QComboBox(self)
-            self.ProjectClientBox.addItems(clients)
+            self.ProjectClientBox.addItems(glob_ProjectClients)
             self.ProjectClientBox.setEditable(True)
             self.ProjectClientBox.setCurrentText(ThisProject_client) if ThisProject_client != '' else self.ProjectClientBox.setCurrentText('xxxx')
             self.ProjectClientBox.setEnabled(False)
@@ -6372,7 +6479,7 @@ class NewDrawing_Dialog(QDialog):
             self.ProjectClientEditButton.clicked.connect(lambda: self.ProjectClientBox.setEnabled(True))
             self.ProjectArchitect = QLabel('Architect:', self)
             self.ProjectArchitectBox= QComboBox(self)
-            self.ProjectArchitectBox.addItems(architects)
+            self.ProjectArchitectBox.addItems(glob_ProjectArchitects)
             self.ProjectArchitectBox.setEditable(True)
             self.ProjectArchitectBox.setCurrentText(ThisProject_architect) if ThisProject_architect != '' else self.ProjectArchitectBox.setCurrentText('xxxx')
             self.ProjectArchitectBox.setEnabled(False)
@@ -6589,7 +6696,7 @@ class NewDrawing_Dialog(QDialog):
                     for i in range(13,100):
                         self.LevelListBox.addItem(str(i),str(i))
                     self.LevelListBox.setCurrentText("13")
-                self.prename=project3name_dict[ThisProject_foldername] +'-RCDC-'+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'-'+str(self.LevelListBox.currentData())\
+                self.prename=glob_Project3Code_dict[ThisProject_foldername] +'-RCDC-'+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'-'+str(self.LevelListBox.currentData())\
                     +'-'+str(self.TypeListBox.currentData())\
                     +'-'+ str(self.RoleListBox.currentData())\
                     +'-'+str(self.ServicesListBox2.currentData())
@@ -6670,24 +6777,24 @@ class NewDrawing_Dialog(QDialog):
                 if proceed=="Yes":
                     #Check for stage folder
                     #If stage folder doesn't already exist for the current RIBA stage, make one (and make an SS folder in it)
-                    if path.exists(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
-                        mkdir(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])
-                        mkdir(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\SS')
+                    if path.exists(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
+                        mkdir(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])
+                        mkdir(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\SS')
 
-                    if path.exists(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf")==False:
+                    if path.exists(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf")==False:
                         # # drawingLeft = 2077.5
                         
                         if self.xrefCheck.isChecked():
-                            editPDF(ProjectDrawingFolder+'\\2 Backgrounds\\'+self.xrefLevelBox.currentText()+".pdf",ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf",textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no,"Client":self.ProjectClientBox.currentText(), "Architect": self.ProjectArchitectBox.currentText(), "Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "Service":str(self.RoleListBox.currentText()), "DrawingTitle":str(self.nameBox.text()), "DrawingNo":replace_last(self.FullNameBox.text(),' - '+str(self.nameBox.text()),''),"DateCreated":self.DateCreatedEdit.text()})
+                            editPDF(ProjectDrawingFolder+'\\2 Backgrounds\\'+self.xrefLevelBox.currentText()+".pdf",ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf",textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no,"Client":self.ProjectClientBox.currentText(), "Architect": self.ProjectArchitectBox.currentText(), "Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "Service":str(self.RoleListBox.currentText()), "DrawingTitle":str(self.nameBox.text()), "DrawingNo":replace_last(self.FullNameBox.text(),' - '+str(self.nameBox.text()),''),"DateCreated":self.DateCreatedEdit.text()})
                         else:
                             if self.TypeListBox.currentData()=="SK":
                                 if self.A3RadioBut.isChecked():
-                                    editPDF(SketchA3_Temp,ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf",textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no, "Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "DrawingTitle":str(self.nameBox.text()), "DrawingNo":replace_last(self.FullNameBox.text(),' - '+str(self.nameBox.text()),''),"DateCreated":self.DateCreatedEdit.text()})
+                                    editPDF(SketchA3_Temp,ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf",textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no, "Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "DrawingTitle":str(self.nameBox.text()), "DrawingNo":replace_last(self.FullNameBox.text(),' - '+str(self.nameBox.text()),''),"DateCreated":self.DateCreatedEdit.text()})
                                 else:           
-                                    editPDF(SketchA1_Temp,ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf",textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no, "Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "DrawingTitle":str(self.nameBox.text()), "DrawingNo":replace_last(self.FullNameBox.text(),' - '+str(self.nameBox.text()),''),"DateCreated":self.DateCreatedEdit.text()})
+                                    editPDF(SketchA1_Temp,ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf",textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no, "Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "DrawingTitle":str(self.nameBox.text()), "DrawingNo":replace_last(self.FullNameBox.text(),' - '+str(self.nameBox.text()),''),"DateCreated":self.DateCreatedEdit.text()})
                             else:   
-                                editPDF(DrawingA1_Temp,ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf",textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no,"Client":self.ProjectClientBox.currentText(), "Architect": self.ProjectArchitectBox.currentText(), "Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "Service":str(self.RoleListBox.currentText()), "DrawingTitle":str(self.nameBox.text()), "DrawingNo":replace_last(self.FullNameBox.text(),' - '+str(self.nameBox.text()),'')})
-                        # # canvas=Canvas(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf", pagesize=(1188, 842.4))
+                                editPDF(DrawingA1_Temp,ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf",textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no,"Client":self.ProjectClientBox.currentText(), "Architect": self.ProjectArchitectBox.currentText(), "Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "Service":str(self.RoleListBox.currentText()), "DrawingTitle":str(self.nameBox.text()), "DrawingNo":replace_last(self.FullNameBox.text(),' - '+str(self.nameBox.text()),'')})
+                        # # canvas=Canvas(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf", pagesize=(1188, 842.4))
                         # # canvas.drawString(72, 72, "")
                         # # canvas.save()
                        #Add the new drawing/Sketch to database
@@ -6711,7 +6818,7 @@ class NewDrawing_Dialog(QDialog):
                         msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
                         msg.exec_()
                     else:
-                        MsgBox("The path "+ ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf already exists",setWindowTitle="Error", setIcon = QMessageBox.Critical)
+                        MsgBox("The path "+ ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.FullNameBox.text()+".pdf already exists",setWindowTitle="Error", setIcon = QMessageBox.Critical)
                 else:
                     MsgBox("'"+self.bgname+"' was not found",setWindowTitle="Error", setIcon = QMessageBox.Critical)
             else:
@@ -6732,7 +6839,7 @@ class CopyDrawing_Dialog(QDialog):
             self.layout().addLayout(leftLayout)
             self.layout().addLayout(rightLayout)
             #Check if this project three-letter code has been set, and give error msg if not
-            if project3name_dict[ThisProject_foldername] =='XXX':
+            if glob_Project3Code_dict[ThisProject_foldername] =='XXX':
                 MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'\n\nYou can change this in the Admin",setWindowTitle="Error", setIcon = QMessageBox.Critical)
           #Dictionary for the sequential no at the end of the drawing no
             if drawingwindow.tableSelected==drawingwindow.DrawingsTable:
@@ -6855,7 +6962,7 @@ class CopyDrawing_Dialog(QDialog):
                             name[3]=str(self.Checkboxdict[i])
                             service=servicenodict[name[-1][:2]]
                         #RIBA   
-                        name[2]=RIBAstages[ThisProject_no+' - '+ ThisProject_name]
+                        name[2]=glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]
                         #Sort out sequential number
                         if '-'.join(name)[:-2] in self.SeqNoDict:
                             name[-1]=name[-1][:2] +str(self.SeqNoDict['-'.join(name)[:-2]]+1).zfill(2)
@@ -6955,7 +7062,7 @@ class ConfirmCopyDrawing(QDialog):
             self.ProjectNameEdit.setEnabled(False)
             self.ProjectClient= QLabel('Client:', self)
             self.ProjectClientBox= QComboBox(self)
-            self.ProjectClientBox.addItems(clients)
+            self.ProjectClientBox.addItems(glob_ProjectClients)
             self.ProjectClientBox.setEditable(True)
             self.ProjectClientBox.setCurrentText(ThisProject_client) if ThisProject_client != '' else self.ProjectClientBox.setCurrentText('xxxx')
             self.ProjectClientBox.setEnabled(False)
@@ -6963,7 +7070,7 @@ class ConfirmCopyDrawing(QDialog):
             self.ProjectClientEditButton.clicked.connect(lambda: self.ProjectClientBox.setEnabled(True))
             self.ProjectArchitect = QLabel('Architect:', self)
             self.ProjectArchitectBox= QComboBox(self)
-            self.ProjectArchitectBox.addItems(architects)
+            self.ProjectArchitectBox.addItems(glob_ProjectArchitects)
             self.ProjectArchitectBox.setEditable(True)
             self.ProjectArchitectBox.setCurrentText(ThisProject_architect) if ThisProject_architect != '' else self.ProjectArchitectBox.setCurrentText('xxxx')
             self.ProjectArchitectBox.setEnabled(False)
@@ -7122,17 +7229,17 @@ class ConfirmCopyDrawing(QDialog):
 
                     if MissingBGs =="": #IF all xrefs for selected drawings exist then proceed
                         for self.drawing in range(self.drawingcopies_Table.rowCount()): #Ensure the drawing you're creating doesn't already exist
-                            if path.exists(ProjectDrawingFolder+'\\'+self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.drawingcopies_Table.item(self.drawing,0).text()+".pdf")==True:
-                                MsgBox("The path "+ ProjectDrawingFolder+'\\'+self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.drawingcopies_Table.item(self.drawing,0).text()+".pdf already exists",setWindowTitle="Error: File already exists", setIcon = QMessageBox.Critical)
+                            if path.exists(ProjectDrawingFolder+'\\'+self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.drawingcopies_Table.item(self.drawing,0).text()+".pdf")==True:
+                                MsgBox("The path "+ ProjectDrawingFolder+'\\'+self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.drawingcopies_Table.item(self.drawing,0).text()+".pdf already exists",setWindowTitle="Error: File already exists", setIcon = QMessageBox.Critical)
                                 break
                         else:
                             con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
                             conn = pyodbc_connect(con_string)
                             cursor =conn.cursor()                    
                             #If stage folder doesn't already exist for the current RIBA stage, make one (and make an SS folder in it)
-                            if path.exists(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
-                                mkdir(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])
-                                mkdir(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\SS')
+                            if path.exists(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
+                                mkdir(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])
+                                mkdir(ProjectDrawingFolder+'\\'+ self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\SS')
                             for self.drawing in range(self.drawingcopies_Table.rowCount()):
                                 # drawingLeft = 2077.5
                                 role=""
@@ -7141,7 +7248,7 @@ class ConfirmCopyDrawing(QDialog):
                                     if DrawNamingDict['Role'][role]== (self.drawingcopies_Table.item(self.drawing,0).text().split(" - ",1))[0].split('-')[-2]:
                                         break
                                 drawingtitle=self.drawingcopies_Table.item(self.drawing,0).text().split(" - ",1)
-                                drawingfilename= ProjectDrawingFolder+'\\'+self.subfolder +'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.drawingcopies_Table.item(self.drawing,0).text()+".pdf"
+                                drawingfilename= ProjectDrawingFolder+'\\'+self.subfolder +'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.drawingcopies_Table.item(self.drawing,0).text()+".pdf"
                                 if self.drawingcopies_Table.cellWidget(self.drawing, 1).isChecked():
                                     editPDF(ProjectDrawingFolder+'\\2 Backgrounds\\'+XrefsDict[self.drawingcopies_Table.item(self.drawing, 0).text()]+".pdf", drawingfilename,textBoxDict={"ProjectName":self.ProjectNameEdit.text(),"ProjectNo":ThisProject_no,"Client":self.ProjectClientBox.currentText(), "Architect": self.ProjectArchitectBox.currentText(),"Designby":self.DesignbyBox.currentText(), "Drwn1":self.DesignbyBox.currentText(), "Service":role, "DrawingTitle":str(drawingtitle[-1]), "DrawingNo":(drawingtitle)[0]})
                                 else:
@@ -7410,7 +7517,9 @@ class ReportsPresMemosWindow(QMainWindow):
                     conn = pyodbc_connect(con_string)
                     cursor =conn.cursor()            
                     for i in self.selectionindexes:
-                        cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = '"+ str(tableobj.item(i, 0).text()) + "' AND PostName = '"+ str(tableobj.item(i, 1).text()) + "')")
+                        prename=str(tableobj.item(i, 0).text())
+                        postname=str(tableobj.item(i, 1).text())
+                        cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = ? AND PostName = ?)", (prename, postname))
                         if path.exists(Project_Folders_dst +'\\'+ ThisProject_foldername+'\\'+subfolderstr+'\\'+tableobj.item(i,0).text()+" - "+tableobj.item(i,1).text()+".docx"):
                             while True:
                                 try:
@@ -7557,7 +7666,7 @@ class NewReport_Dialog(QDialog):
             super(NewReport_Dialog,self).__init__()
             # self.resize(500,500) #Window width and height
           #Check if this project three-letter code has been set, and give error msg if not
-            if project3name_dict[ThisProject_foldername] =='XXX':
+            if glob_Project3Code_dict[ThisProject_foldername] =='XXX':
                 MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'",setWindowTitle="Error", setIcon = QMessageBox.Critical)
             
           #Create Dropdowns and fill them
@@ -7646,9 +7755,9 @@ class NewReport_Dialog(QDialog):
                 self.TypeListBox.addItems(['Stage 2', 'Stage 3', 'Stage 4', 'CEAP Business case', 'Embodied carbon', 'Feasibility', 'Utilities', 'Site Visit Report', 'Other'])
             self.TypeListBox.setCurrentText(prev_type)
             #set the report number without the last four digits(the seq no)
-            ribastage=RIBAstages[ThisProject_no+' - '+ ThisProject_name]
+            ribastage=glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]
             if ribastage=='': ribastage='XX'
-            self.prename = project3name_dict[ThisProject_foldername] + '-RCDC-'+ribastage+'-XX-RP-'+self.RoleListBox.currentData()
+            self.prename = glob_Project3Code_dict[ThisProject_foldername] + '-RCDC-'+ribastage+'-XX-RP-'+self.RoleListBox.currentData()
             if self.prename in ReportSeqNoDict: #chech for the number in the report seqno dictionary
                 self.sequential_no = str(ReportSeqNoDict[self.prename]+1).zfill(4)
             else:
@@ -8094,7 +8203,9 @@ class SpecsWindow(QMainWindow):
                             toDelete= 'Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".docx"
                         elif tableobj == self.SchedulesTable:
                             toDelete= 'Stage '+tableobj.item(i,1).text().split('-')[2]+'\\'+tableobj.item(i,1).text()+" - "+tableobj.item(i,2).text()+".xlsx"
-                        cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = '"+ str(tableobj.item(i, 1).text()) + "' AND PostName = '"+ str(tableobj.item(i, 2).text()) + "')")
+                        prename= str(tableobj.item(i,1).text())
+                        postname= str(tableobj.item(i,2).text())
+                        cursor.execute("DELETE FROM "+tbl+" WHERE (PreName = ? AND PostName = ?)", (prename, postname))
                         if path.exists(subfolderstr+'\\'+toDelete):
                             while True:
                                 try:
@@ -8211,7 +8322,7 @@ class NewSpecs_Dialog(QDialog):
             super(NewSpecs_Dialog,self).__init__()
             # self.resize(500,500) #Window width and height
           #Check if this project three-letter code has been set, and give error msg if not
-            if project3name_dict[ThisProject_foldername] =='XXX':
+            if glob_Project3Code_dict[ThisProject_foldername] =='XXX':
                 MsgBox("You need to set a three letter code for this project\nCurrent code: 'XXX'",setWindowTitle="Error", setIcon = QMessageBox.Critical)
           
           #Create Dropdowns and fill them
@@ -8271,7 +8382,7 @@ class NewSpecs_Dialog(QDialog):
                 type_code='SU'
             else:
                 type_code='XX'
-            prename=project3name_dict[ThisProject_foldername] +'-RCDC-'+self.StageBox.currentText().replace("Stage ","")+'-XX-SP-'+type_code
+            prename=glob_Project3Code_dict[ThisProject_foldername] +'-RCDC-'+self.StageBox.currentText().replace("Stage ","")+'-XX-SP-'+type_code
             #Check if this name already exists
             if prename in SpecsSeqNoDict: #If it does, add 1 to the sequence number
                 count= SpecsSeqNoDict[prename]+1
@@ -8749,9 +8860,9 @@ class NewSchedules_Dialog(QDialog):
     
     def getRef(self, schdict):
         try:
-            ribastage=RIBAstages[ThisProject_no+' - '+ ThisProject_name]
+            ribastage=glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]
             if ribastage=='': ribastage='XX'
-            prename= project3name_dict[ThisProject_foldername] +'-RCDC-'+ribastage+'-XX-SH-'+schdict['ServiceNo']
+            prename= glob_Project3Code_dict[ThisProject_foldername] +'-RCDC-'+ribastage+'-XX-SH-'+schdict['ServiceNo']
             #Check if this name already exists
             if prename in self.seqNoTempDict: #If it does, add 1 to the sequence number
                 sequential_no= str(self.seqNoTempDict[prename]+1).zfill(4)  
@@ -8825,16 +8936,16 @@ class NewSchedules_Dialog(QDialog):
             if path.exists(Project_Database)==True:
                 if path.exists(ProjectSchedulesFolder):
             #         #Check if schedules template folder exists for this stage
-                    if path.exists(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
-                        mkdir(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name])
-                        mkdir(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\SS')
+                    if path.exists(ProjectSchedulesFolder+'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
+                        mkdir(ProjectSchedulesFolder+'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])
+                        mkdir(ProjectSchedulesFolder+'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\SS')
                     # Check if templates for selected  schedules exist
                     ####
                     for sch in range(0,self.schedulesTable.rowCount()):
                         if not path.exists(SchedulesTempFolder+'\\'+self.schedulesTable.item(sch,0).data(256)+'.xlsx'):
                             MsgBox("Template '"+self.schedulesTable.item(sch,0).data(256)+"'.xlsx' was not found\n",setWindowTitle="    ", setIcon = QMessageBox.Information)
                             break
-                        if path.exists(ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.schedulesTable.item(sch,0).text()+'.xlsx'):
+                        if path.exists(ProjectSchedulesFolder+'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+self.schedulesTable.item(sch,0).text()+'.xlsx'):
                             MsgBox("Schedule '"+self.schedulesTable.item(sch,0).text()+".xlsx' already exists\n\nPlease rename the schedule",setWindowTitle="    ", setIcon = QMessageBox.Information)
                             break
                     else:
@@ -8846,7 +8957,7 @@ class NewSchedules_Dialog(QDialog):
                             schedule=self.schedulesTable.item(sch,0).text()
                             scheduleRef=schedule.split(" - ",1)[0]
                             scheduleTitle=schedule.split(" - ",1)[1]
-                            filePath= ProjectSchedulesFolder+'\\Stage '+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+schedule+'.xlsx'
+                            filePath= ProjectSchedulesFolder+'\\Stage '+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+'\\'+schedule+'.xlsx'
                             copyfile(SchedulesTempFolder+'\\'+self.schedulesTable.item(sch,0).data(256)+'.xlsx', filePath)
                             #edit the excel file
                             self.fillExcel(filePath, {"[PROJECT NAME]":ThisProject_name, "[PROJECT NUMBER]":int(ThisProject_no), "[SCHEDULE REF]":scheduleRef, "[SCHEDULE TITLE]" : scheduleTitle, "[DATE]":datetime.now().strftime("%d/%m/%Y"),"[REVISION]":"P01"})
@@ -10026,6 +10137,7 @@ class NewFeesProposal_Dialog(QDialog):
             newfeesproposaldialog.close()
 
 class CalculationsWindow(QMainWindow):
+    
     def __init__(self):
         try:
             super().__init__()
@@ -10125,7 +10237,7 @@ class CalculationsWindow(QMainWindow):
                 self.Calc_search.textChanged.connect(lambda: self.filter_search(self.CalcTable, self.Calc_search))
 
                 # #set default open directory to the current stage folder
-                # if stage!=RIBAstages[ThisProject_no+' - '+ ThisProject_name]:#If this stage is not the current stage for this project, collapse it  
+                # if stage!=glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]:#If this stage is not the current stage for this project, collapse it  
                 #         self.CalcTable.selectRow(stagerow)
                 #         self.openfile(self.CalcTable)#fold stages
 
@@ -10237,6 +10349,7 @@ class CalculationsWindow(QMainWindow):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
+
     def delete(self, tableobj):
         try:
             selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0)] #Make a list of selected calcs
@@ -10254,11 +10367,15 @@ class CalculationsWindow(QMainWindow):
                             if fil[-5:-1]=='.xls' and fil[:-5]  in calcsAccessnames:
                                 dbfilestoDelete.add(fil[:-5])
                         if dbfilestoDelete:
-                            dbfilestoDelete= tuple(dbfilestoDelete)
                             con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';' #Connect with the access database
                             conn = pyodbc_connect(con_string)
                             cursor =conn.cursor()            
-                            cursor.execute(f"DELETE FROM Calcs WHERE FullName IN {dbfilestoDelete}")
+                            placeholders = ', '.join('?' for _ in range(len(dbfilestoDelete))) #Create a string of '?' for each file to delete
+
+                            cursor.execute("DELETE FROM Calcs WHERE FullName IN ({})".format(placeholders), tuple(dbfilestoDelete)
+                                           ) #delete from database
+
+
                             conn.commit()
                             cursor.close()
                             conn.close()# Save changes to the database and close cursor and connection
@@ -10408,9 +10525,9 @@ class NewCalc_Dialog(QDialog):
         try: 
             self.editNameButton.setEnabled(True)
             serviceno=self.CalcTemplateListBox.currentItem().data(258) #get service no
-            ribastage=RIBAstages[ThisProject_no+' - '+ ThisProject_name] #get RIBA stage
+            ribastage=glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name] #get RIBA stage
             if ribastage=='': ribastage='XX'
-            self.prename=project3name_dict[ThisProject_foldername]+'-RCDC-'+ribastage+'-XX-CALC-'+serviceno
+            self.prename=glob_Project3Code_dict[ThisProject_foldername]+'-RCDC-'+ribastage+'-XX-CALC-'+serviceno
             if self.prename in CalcSeqNoDict: #add the next seq number from the calc seqno dictionary
                 count = CalcSeqNoDict[self.prename]+1
             else:
@@ -10466,10 +10583,10 @@ class NewCalc_Dialog(QDialog):
                 if self.FullNameBox.text()!="":
                     if path.exists(ProjectCalcsFolder):
                         if path.exists(Project_Database):
-                            if path.exists(ProjectCalcsFolder+"\\Stage "+RIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
-                                mkdir(ProjectCalcsFolder+"\\Stage "+RIBAstages[ThisProject_no+' - '+ ThisProject_name])
+                            if path.exists(ProjectCalcsFolder+"\\Stage "+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])==False:
+                                mkdir(ProjectCalcsFolder+"\\Stage "+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name])
                             if path.exists(CalcsTempFolder+"\\"+self.CalcTemplateListBox.currentItem().data(256)):
-                                fileFullpath=ProjectCalcsFolder+"\\Stage "+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+"\\"+self.FullNameBox.text()+'.xlsx'
+                                fileFullpath=ProjectCalcsFolder+"\\Stage "+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+"\\"+self.FullNameBox.text()+'.xlsx'
                                 if path.exists(fileFullpath)==False:
                                     copyfile(CalcsTempFolder+"\\"+self.CalcTemplateListBox.currentItem().data(256),fileFullpath)
                                     #fill details into file
@@ -10506,7 +10623,7 @@ class NewCalc_Dialog(QDialog):
                                     msg= TimerMsgBox("Done        ",setWindowTitle=" ",setIcon=None, setIconPixmap=tickdone_icon, setWindowIcon=blankimage_icon)    
                                     msg.exec_()
                                 else:
-                                    MsgBox("The path "+ ProjectCalcsFolder+"Stage "+RIBAstages[ThisProject_no+' - '+ ThisProject_name]+"\\"+self.FullNameBox.text()+'.xlsx'+" already exists", setWindowTitle="Error: File already exists", setIcon = QMessageBox.Critical)
+                                    MsgBox("The path "+ ProjectCalcsFolder+"Stage "+glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]+"\\"+self.FullNameBox.text()+'.xlsx'+" already exists", setWindowTitle="Error: File already exists", setIcon = QMessageBox.Critical)
                             else:
                                 MsgBox("The template '"+self.CalcTemplateListBox.currentItem().data(256)+"' is missing",setWindowTitle="Template missing", setIcon = QMessageBox.Critical)
 
@@ -11164,7 +11281,7 @@ class NewIssue_Dialog(QDialog):
                                 self.table.item(rowno,1).setData(259,True) # true as in is it missing
                             rowno+=1
                        
-                        if stage!=RIBAstages[ThisProject_no+' - '+ ThisProject_name]:#If this stage is not the current stage for this project, collapse it  
+                        if stage!=glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]:#If this stage is not the current stage for this project, collapse it  
                             self.table.selectRow(stagerow)
                             self.expand_or_fold(self.table)#fold stages
                     #Table header expansion   
@@ -12636,6 +12753,18 @@ class NavigationLayout(QWidget):
     # def setToolTip(self, text):
     #     self.label.setToolTip(text)
 
+class NumericalTableWidgetItem(QTableWidgetItem):
+    def __lt__(self, other):
+        try:
+            if (isinstance(other, QTableWidgetItem)):
+                my_value = float(self.text())  # Using the float of the text as the custom role for the numerical value
+                other_value = float(other.text())
+                return my_value < other_value
+            else:
+                return super(NumericalTableWidgetItem, self).__lt__(other)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
 # class CollapsibleFrame(QWidget):
 #     def __init__(self, parent=None, title=None):
 #         super().__init__(parent)
@@ -12773,12 +12902,14 @@ if __name__ == "__main__":
             from openpyxl.styles import Alignment
             # from csv import DictWriter as csv_DictWriter
             # import pandas as pd
-            from pandas import DataFrame as pd_DataFrame
+            from pandas import DataFrame as pd_DataFrame, concat as pd_concat, to_datetime as pd_to_datetime
             import matplotlib.pyplot as plt
             from matplotlib.patches import Patch
-                
             # from matplotlib.figure import Figure
             from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT as NavigationToolbar
+            from matplotlib.widgets import CheckButtons
+
+
             # import matplotlib.patheffects as path_effects
             # import numpy as np
             from numpy import arange as np_arange#, random as np_random
@@ -12889,7 +13020,8 @@ if __name__ == "__main__":
             initwindow=Init_Window()
             widget.addWidget(initwindow)
 
-            # initwindow.Page.setCurrentIndex(1)
+            initwindow.Page.setCurrentIndex(1)
+            initwindow.resourceWidget.rscManager.usersFilterBox.setCurrentText("All users")
 
         # #     # # toremove (added for test)
         #     activeProjectrow=26 #SHJS
