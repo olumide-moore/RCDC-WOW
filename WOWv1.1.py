@@ -190,7 +190,7 @@ def getResourceMinMaxWeeks(resources):
     try:
         if resources.empty or resources['Week'].isnull().all():
             #If resources is empty, set the min week as the current week and the max week as the week of next 1 year
-            return QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1), QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1 + 7 * 52), None
+            return QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1), QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1 + 7 * 52), []
         #If resources is not empty, get the min week and max week from the resources, and compare and set against the current week and the week of next 1 year respectively
         weeks=resources['Week'].dropna().unique()
         minweek=min(QDate.fromString(weeks.min().strftime("%d/%m/%Y"),"dd/MM/yyyy"),QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1)) #min week between the earliest week and the current week
@@ -1679,7 +1679,7 @@ class ResourceWeeklyTotalTable(QTableWidget):
         try:
             super().__init__()
             
-            self.rowLabels=[emp for emp in RCDC_employees]
+            self.rowLabels=[emp for emp in RCDC_employees if emp not in ['OO', 'TS']]
             self.columnLabels=[]
             self.setRowCount(len(self.rowLabels))
             self.setVerticalHeaderLabels(self.rowLabels)
@@ -1780,20 +1780,21 @@ class ResourceWeeklyTotalTable(QTableWidget):
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
 class ResourceWeeklyBreakdownTable(QTableWidget):
-    def __init__(self, forUsers=False, oncomplete=None):
+    def __init__(self, forUsers=False, oncomplete=None, includeNewResourceButton=False, includeEditResourceButton=False):
         try:
             super().__init__()
             self.forUsers=forUsers
             self.oncomplete=oncomplete
+            self.isEditting=False
 
             if self.forUsers: self.currentUser=None
                                 # QHeaderView::section{ border:1px solid rgba(176, 196, 84, 0.9); padding-left:10px; }                               
             self.setStyleSheet("""QHeaderView{font-size:17px; font-family:"Gadugi";}
-                                QHeaderView::section:vertical{ border:1px solid rgba(176, 196, 84, 0.9); color: rgba(0,0,0,0.4); padding-left:10px; }                               
+                                QHeaderView::section:vertical{ border:1px solid rgba(176, 196, 84, 0.9); color: rgba(0,0,0,0.5); padding-left:10px; }                               
                                 QHeaderView::section:horizontal{ border:1px solid rgba(176, 196, 84, 0.9); padding-left:10px; }                               
                                 QTableWidget{ border:1px; font-family:"Gadugi"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background: rgba(208,236,252,0.5); color:black;}""")
 
-            # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
             #set columns width as unadjustable
             self.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
@@ -1803,12 +1804,24 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
 
             self.input_buffer = ""
             self.edited_cells = dict()
+            self.resources_to_save = dict()
             self.cellPressed.connect(self.on_cell_pressed)
             self.cellDoubleClicked.connect(self.on_cell_double_clicked)
 
             # self.header = CustomComboBoxHeader()
             # self.setVerticalHeader(self.header)
             self.installEventFilter(self)
+
+
+            #Button to add new resource
+            if includeNewResourceButton:
+                self.NewResourceButton=ToolButton(" New Resource ", icon=newaction_icon, icon_width=25, icon_height=25,  min_height=30, buttonStyle=Qt.ToolButtonTextBesideIcon, clicked=self.newResourceClicked)
+
+            #Edit resource button
+            if includeEditResourceButton:
+                self.EditResourceButton=ToolButton(" Edit Resource ", min_height=25, clicked=self.editResourceClicked)
+                self.CancelEditButton=ToolButton(" Cancel Edit ", min_height=30, clicked=self.cancelEditClicked)
+                self.CancelEditButton.setVisible(False)
 
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -1837,9 +1850,7 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
     def populateTable(self, resources, user=None):
         try:           
             if self.forUsers:
-                # print(f"User: {user}, Current User: {self.currentUser}")
-                if user==self.currentUser:
-                    return
+                if user in [None, self.currentUser]: return
                 self.currentUser=user
             self.setRowCount(0)
             # print('here')
@@ -1883,17 +1894,21 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
 
     def on_cell_pressed(self):
         try:
-            self.close_editors()
-            self.input_buffer = ""
+            if self.isEditting:
+                # print("cell pressed")
+                # self.update_selected_cells()
+                self.close_editors()
+                self.input_buffer = ""
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def on_cell_double_clicked(self, row, column):
         try:
-            if self.item(row, column) is None:
-                self.setItem(row, column, NumericalTableWidgetItem())
-            self.input_buffer =  self.item(row, column).text()
-            self.update_selected_cells()
+            if self.isEditting: 
+                if self.item(row, column) is None:
+                    self.setItem(row, column, NumericalTableWidgetItem())
+                self.input_buffer =  self.item(row, column).text()
+                self.update_selected_cells()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -1911,10 +1926,11 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                             menu.addAction("Delete", self.deleteResources)
                             menu.exec_(event.globalPos())
                             return True
-            if event.type() == QEvent.KeyPress and source == self:
+            if self.isEditting and event.type() == QEvent.KeyPress and source == self:
                 key = event.key()
                 # print(key)
                 if key in (Qt.Key_Enter, Qt.Key_Return):
+                    print("In enter")
                     self.close_editors()
                     self.input_buffer = ""
                     return True
@@ -1948,6 +1964,7 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
 
     def update_selected_cells(self):
         try:
+            # print("updating selected cells")
             selected_cells= [(index.row(), index.column()) for index in self.selectedIndexes()]
             for row, column in selected_cells:
                 item = self.item(row, column)
@@ -1964,16 +1981,61 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
         
     def close_editors(self):
         try:
+            # print("closing editors")
             for row in self.edited_cells:
                 for column in self.edited_cells[row]:
                     if self.indexWidget(self.model().index(row, column)) is not None: #if the cell is being edited
                         self.closePersistentEditor(self.item(row, column))
-                    if not is_float(self.item(row, column).text()):
+                    if self.item(row, column) and not is_float(self.item(row, column).text()):
                         self.item(row, column).setText("")
-            self.saveChanges()
+            # print(self.edited_cells)
+            self.storeEdittedCells()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
+    def newResourceClicked(self):
+        try:
+            dialog=NewResourceUserProjectDialog(oncomplete=self.oncomplete)
+            dialog.forUserBox.setCurrentText(self.currentUser)
+            dialog.exec()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def editResourceClicked(self):
+        try:
+            if self.EditResourceButton.text()==" Edit Resource ":
+                self.verticalHeader().setStyleSheet("""QHeaderView::section{background-color:rgba(0, 0, 0, 0.1); color:black; font-size:17px; font-family:"Gadugi";}""")
+                self.setEditTriggers(QAbstractItemView.DoubleClicked)
+                # self.setEditTriggers(QAbstractItemView.DoubleClicked)
+                self.isEditting=True
+                self.EditResourceButton.setText(" Save Changes ")
+                self.CancelEditButton.setVisible(True)
+            else:
+                self.saveResources()
+                self.verticalHeader().setStyleSheet("""QHeaderView::section{ border:1px solid rgba(176, 196, 84, 0.9); color: rgba(0,0,0,0.5); padding-left:10px;}""")
+                self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+                self.isEditting=False
+                self.EditResourceButton.setText(" Edit Resource ")
+                self.CancelEditButton.setVisible(False)
+                # print(self.edited_cells)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def cancelEditClicked(self):
+        try:
+            self.verticalHeader().setStyleSheet("""QHeaderView::section{ border:1px solid rgba(176, 196, 84, 0.9); color: rgba(0,0,0,0.5); padding-left:10px;}""")
+            self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.isEditting=False
+            self.EditResourceButton.setText(" Edit Resource ")
+            self.CancelEditButton.setVisible(False)
+            if len(self.edited_cells)>0 or len(self.resources_to_save)>0:
+                self.oncomplete()
+                self.edited_cells.clear()
+                self.resources_to_save.clear()
+            
+
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def deleteResources(self):
         try:
@@ -1985,11 +2047,14 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
             self.oncomplete()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    def saveChanges(self):
+    
+    def storeEdittedCells(self):
         try:
+            # print("storing edited cells")
             if len(self.edited_cells)>0:
                 # print(self.edited_cells)
                 for row in self.edited_cells: #for each row edited
+                    # print(row)
                     verticalheaderitem=self.verticalHeaderItem(row) #get the filename in row header
                     if verticalheaderitem and verticalheaderitem.data(257) is not None:
                         filename=verticalheaderitem.data(257)
@@ -2002,35 +2067,44 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                             hours=float(item.text()) if is_float(item.text()) else ''
                             week=self.horizontalHeaderItem(column).text()
                             rowUpdate[week]={'Hours':hours}
-                    # print(filename,rowUpdate)
-                    if self.forUsers:
-                        user=self.currentUser
+                    if filename not in self.resources_to_save:   
+                        self.resources_to_save[filename]=rowUpdate
                     else:
-                        user=verticalheaderitem.text()
-                    # print(verticalheaderitem.data(258))
-                    resourceFolder=users_jsons+"\\"+user+"\\Resources"
-                    if path.exists(resourceFolder)==False: mkdir(resourceFolder) # create the folder if it doesn't exist
-                    with open(resourceFolder+"\\"+filename, 'r+') as f:
-                        resource=json_load(f)
-                        for week in rowUpdate:
-                            for wksobj in resource['Weeks']:
-                                if wksobj['Week']==week:
-                                    if rowUpdate[week]['Hours']=='': #if the hours is empty, remove the week from the resource
-                                        resource['Weeks'].remove(wksobj)
-                                    else:
-                                        wksobj['Hours']=rowUpdate[week]['Hours']
-                                    break
-                            else:
-                                if rowUpdate[week]['Hours']!='': #if the hours is not empty, add the week to the resource
-                                    resource['Weeks'].append({'Week':week, 'Hours':rowUpdate[week]['Hours'], 'TaskDesc':"",'Stage':""})
-                        f.seek(0)#move the file pointer to the beginning of the file
-                        f.truncate() #clear the file
-                        json_dump(resource, f, indent=4) #write the updated resource to the file
+                        self.resources_to_save[filename].update(rowUpdate)
+                # print(self.edited_cells)
+                self.edited_cells.clear()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def saveResources(self):
+        try:
+            self.storeEdittedCells()
+            # print(self.resources_to_save)
+            for filename, weeks in self.resources_to_save.items():
+                if not filename: continue
+                user=filename.split('-')[1]
+                resourceFolder=users_jsons+"\\"+user+"\\Resources"
+                if path.exists(resourceFolder)==False: mkdir(resourceFolder) # create the folder if it doesn't exist
+                with open(resourceFolder+"\\"+filename, 'r+') as f:
+                    resource=json_load(f)
+                    for week in weeks:
+                        for wksobj in resource['Weeks']:
+                            if wksobj['Week']==week:
+                                if weeks[week]['Hours']=='': #if the hours is empty, remove the week from the resource
+                                    resource['Weeks'].remove(wksobj)
+                                else:
+                                    wksobj['Hours']=weeks[week]['Hours']
+                                break
+                        else:
+                            if weeks[week]['Hours']!='': #if the hours is not empty, add the week to the resource
+                                resource['Weeks'].append({'Week':week, 'Hours':weeks[week]['Hours'], 'TaskDesc':"",'Stage':""})
+                    f.seek(0)#move the file pointer to the beginning of the file
+                    f.truncate() #clear the file
+                    json_dump(resource, f, indent=4) #write the updated resource to the file
                     # if resource['Weeks']==[]: #if there are no weeks in the resource, delete the resource
                     #     remove(resourceFolder+"\\"+filename)
-                self.edited_cells.clear()                          
-                self.oncomplete()
-
+            self.resources_to_save.clear()
+            self.oncomplete()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
@@ -2409,7 +2483,7 @@ class ResourceTabWidget(QWidget):
             self.resourceWeeklyTotalTable=ResourceWeeklyTotalTable()
             self.resourceWeeklyTotalTable.populateTable(Resources_df)
 
-            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(forUsers=True, oncomplete=self.refreshResourceWindow)
+            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(forUsers=True, oncomplete=self.refreshResourceWindow, includeNewResourceButton=True, includeEditResourceButton=True)
 
             #syncronize their horizontal scrollbars
             self.resourceWeeklyTotalTable.horizontalScrollBar().valueChanged.connect(self.resourceWeeklyBreakdownTable.horizontalScrollBar().setValue)
@@ -2424,8 +2498,8 @@ class ResourceTabWidget(QWidget):
             #Clicked user label
             self.clickedUserLabel=QLabel("")
             self.clickedUserLabel.setFixedSize(150, 32)
-            self.clickedUserLabel.setStyleSheet("background:white; border: none; color:rgba(176, 196, 84, 0.9); ")
-            # self.clickedUserLabel.setStyleSheet("background:white; border: none; color:rgba(0,0,0,0.7); ")
+            # self.clickedUserLabel.setStyleSheet("background:white; border: none; color:rgba(176, 196, 84, 1); ")
+            self.clickedUserLabel.setStyleSheet("background:white; border: none; color:rgba(0,0,0,0.9); ")
             self.clickedUserLabel.setAlignment(Qt.AlignCenter)
             font = QFont()
             # font.setFamily("Microsoft YaHei")
@@ -2433,9 +2507,6 @@ class ResourceTabWidget(QWidget):
             font.setBold(True)
             font.setWeight(75)
             self.clickedUserLabel.setFont(font)
-
-            #Button to add new resource
-            self.NewResourceButton=ToolButton(" New Resource ", icon=newaction_icon, icon_width=25, icon_height=25,  min_height=30, buttonStyle=Qt.ToolButtonTextBesideIcon, clicked=self.newResourceClicked)
 
 
             # busynessLayout=QGridLayout()
@@ -2463,14 +2534,16 @@ class ResourceTabWidget(QWidget):
             # resourceBoardLayout.addLayout(self.rscManager.periodLayout, 0, 1)
             # resourceBoardLayout.addWidget(self.rscManager.resourceWeeklyTotalTable.resource_Search, 2, 0)
             # resourceBoardLayout.addWidget(self.rscManager.busynessValue, 2, 1, Qt.AlignCenter)
-            resourceBoardLayout.addWidget(self.resourceWeeklyTotalTable, 0, 0, 1, 4)
+            resourceBoardLayout.addWidget(self.resourceWeeklyTotalTable, 0, 0, 1, 5)
             # resourceBoardLayout.addWidget(self.rscManager.resourceChart, 3, 1)
             resourceBoardLayout.addWidget(self.clickedUserLabel, 1, 0)
-            resourceBoardLayout.addWidget(self.NewResourceButton, 1, 1)
+            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.NewResourceButton, 1, 1)
+            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.EditResourceButton, 1, 2)
+            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.CancelEditButton, 1, 3)
 
             # resourceBoardLayout.addLayout(hbox, 1, 0, 1, 2)
             # resourceBoardLayout.addWidget(self.NewResourceButton, 1, 0, 1, 2)
-            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable, 2, 0, 1, 4)
+            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable, 2, 0, 1, 5)
             # resourceBoardLayout.setColumnStretch(0, 1)
             # resourceBoardLayout.setColumnStretch(1, 1)
             resourceBoardLayout.setVerticalSpacing(5)
@@ -2484,6 +2557,7 @@ class ResourceTabWidget(QWidget):
 
     def clickedUserInTotalTable(self, row):
         try:
+            self.resourceWeeklyBreakdownTable.edited_cells.clear()
             clickedUserItem=self.resourceWeeklyTotalTable.verticalHeaderItem(row)
             if clickedUserItem is not None:
                 self.clickedUserLabel.setText(clickedUserItem.text())
@@ -2491,13 +2565,6 @@ class ResourceTabWidget(QWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    def newResourceClicked(self):
-        try:
-            dialog=NewResourceUserProjectDialog(oncomplete=self.refreshResourceWindow)
-            dialog.forUserBox.setCurrentText(self.resourceWeeklyBreakdownTable.currentUser)
-            dialog.exec()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def refreshResourceWindow(self, refreshResources=True):
         try:
@@ -2509,7 +2576,7 @@ class ResourceTabWidget(QWidget):
             selected_user=self.resourceWeeklyBreakdownTable.currentUser
             self.resourceWeeklyTotalTable.populateTable(Resources_df)
             self.resourceWeeklyBreakdownTable.currentUser=None
-            # self.resourceWeeklyTotalTable.setCurrentCell(self.resourceWeeklyTotalTable.rowLabels.index(selected_user) if selected_user else 0, self.resourceWeeklyTotalTable.columnLabels.index(QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1).toString("dd/MM/yyyy")))
+            self.resourceWeeklyTotalTable.setCurrentCell(self.resourceWeeklyTotalTable.rowLabels.index(selected_user) if selected_user else 0, self.resourceWeeklyTotalTable.columnLabels.index(QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1).toString("dd/MM/yyyy")))
 
             # self.resourceWeeklyTotalTable.resourceWeeklyBreakdownTable.updateHorizontalHeaders(self.resourceWeeklyTotalTable.columnLabels)
             # self.clickedUserInTotalTable(self.resourceWeeklyTotalTable.rowLabels.index(selected_user) if selected_user else 0)
@@ -3509,8 +3576,11 @@ class ProjectsWidget(QWidget):
                 # self.slctdProjectName.setFixedWidth(self.slctdProjectName.fontMetrics().boundingRect(text).width()+40)
                 # self.projectsDeadlineWidget.populateTable(project)
                 # activeweek= QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1)
+
+                projectno= projectsTable.item(selectedRows[0],projectsTable.columnLabels.index("Project")).text().split(" - ",1)[0]
+                self.updateResourceWeeklyBreakdownTable(projectno)
+
             # self.updateChart()
-            self.updateResourceWeeklyBreakdownTable()
             # self.setProjectsCount()
 
 
@@ -3535,14 +3605,10 @@ class ProjectsWidget(QWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    def updateResourceWeeklyBreakdownTable(self):
+    def updateResourceWeeklyBreakdownTable(self, projectno):
         try:
-            selectedRows=[i.row() for i in projectsTable.selectionModel().selectedRows() if projectsTable.isRowHidden(i.row())==False]
-            if len(selectedRows)==1:
-                projectno= projectsTable.item(selectedRows[0],projectsTable.columnLabels.index("Project")).text().split(" - ",1)[0]
-
-                projectresources= Resources_df[Resources_df['ProjectNo']==projectno]
-                self.resourceWeeklyBreakdownTable.populateTable(projectresources)
+            projectresources= Resources_df[Resources_df['ProjectNo']==projectno]
+            self.resourceWeeklyBreakdownTable.populateTable(projectresources)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     def refreshResources(self):
@@ -3555,7 +3621,8 @@ class ProjectsWidget(QWidget):
             # self.resourceWeeklyBreakdownTable.populateTable(projectresources)
             #Home Resources tab
             initwindow.resourceWidget.refreshResourceWindow(refreshResources=False)
-
+            projectno= projectsTable.item(self.slctdProjectIndex,projectsTable.columnLabels.index("Project")).text().split(" - ",1)[0]
+            self.updateResourceWeeklyBreakdownTable(projectno)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     def on_projectDblclick(self, index):
@@ -13063,10 +13130,9 @@ class ProjectResourceWindow(QMainWindow):
             self.AutoCompleteQAButton=ToolButton(" Auto Complete\nQA ", icon_height=25,  min_height=40, buttonStyle=Qt.ToolButtonTextBesideIcon)
             self.AutoCompleteQAButton.setEnabled(False)
             # self.rscManager=ResourceManager(include_toolbuttons=True, include_period=False,include_resourcegeneraltable=False, include_chart=False, refreshResources=self.refreshResourceWindow, project=f"{ThisProject_no} - {ThisProject_name}")
-            self.NewResourceButton=ToolButton(" New Resource ", icon=newaction_icon, icon_width=25, icon_height=25,  min_height=40, buttonStyle=Qt.ToolButtonTextBesideIcon, clicked=self.newResourceClicked)
             
             # self.periodAllRadioButton.click()
-            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(oncomplete=self.refreshResourceWindow)
+            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(oncomplete=self.refreshResourceWindow, includeNewResourceButton=True, includeEditResourceButton=True)
             
             projectresources= Resources_df[Resources_df['ProjectNo']==ThisProject_no]
             minweek, maxweek, _ = getResourceMinMaxWeeks(projectresources)
@@ -13089,11 +13155,19 @@ class ProjectResourceWindow(QMainWindow):
                 feesLayout.addStretch(1)
             feesLayout.addStretch(10)
 
-
             self.OptionsLayout=QHBoxLayout()
             self.OptionsLayout.addStretch(1)
-            self.OptionsLayout.addWidget(self.NewResourceButton)
+            self.OptionsLayout.addWidget(self.resourceWeeklyBreakdownTable.NewResourceButton)
             self.OptionsLayout.addStretch(1)
+            vbox=QVBoxLayout()
+            vbox.addWidget(self.resourceWeeklyBreakdownTable.EditResourceButton)
+            vbox.addWidget(self.resourceWeeklyBreakdownTable.CancelEditButton)
+            self.OptionsLayout.addLayout(vbox)
+            self.OptionsLayout.addStretch(1)
+            # vbox.addStretch(1)
+            # self.OptionsLayout.addWidget(self.resourceWeeklyBreakdownTable.EditResourceButton)
+            # self.OptionsLayout.addStretch(1)
+            # self.OptionsLayout.addWidget(self.resourceWeeklyBreakdownTable.CancelEditButton)
             self.OptionsLayout.addWidget(self.AutoCompletefromBidButton)
             self.OptionsLayout.addStretch(1)
             self.OptionsLayout.addWidget(self.AutoCompleteQAButton)
@@ -13243,7 +13317,6 @@ class ProjectResourceWindow(QMainWindow):
 
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
 
     def newResourceClicked(self):
         try:
@@ -14186,7 +14259,7 @@ if __name__ == "__main__":
             Central_Database_xlsx=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\CENTRAL ADMIN DATABASE.xlsx"
 
             management_json=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\users_jsons\management.json"
-            users_jsons=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\users_jsons1"
+            users_jsons=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\users_jsons"
             projects_jsons=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\Management\projects_jsons"
             help_json=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\help-info.json"
             
