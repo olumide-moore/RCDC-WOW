@@ -36,7 +36,7 @@ from os import mkdir,makedirs, rename, listdir, path, startfile, remove, environ
 from PyQt5.QtWidgets import QTabWidget,  QDateEdit, QInputDialog, QRadioButton, QFileDialog, QDoubleSpinBox, QListView, QListWidgetItem, QShortcut,  QTextEdit, QWidget, QMainWindow, QApplication, QScrollArea, QAction, QLineEdit,\
     QStackedWidget, QTableWidget, QCalendarWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QMenu, QTableWidgetItem,QHeaderView, \
             QAbstractItemView, QLabel, QDialogButtonBox, QListWidget, QCheckBox, QFrame, QPushButton, QToolButton, QComboBox, QMessageBox, \
-                QDialog, QFormLayout, QGroupBox, QWhatsThis, QSizePolicy, QAbstractScrollArea, QTimeEdit, QSplitter, QStyle, QStyledItemDelegate, QCompleter
+                QDialog, QFormLayout, QGroupBox, QWhatsThis, QSizePolicy, QAbstractScrollArea, QTimeEdit, QSplitter, QStyle, QStyledItemDelegate, QCompleter, QAbstractItemDelegate
 from PyQt5.QtGui import QDragEnterEvent, QIcon, QKeySequence, QPixmap, QFont, QColor, QDropEvent, QRegExpValidator, QDoubleValidator, QFontDatabase, QCursor, QBrush
 from PyQt5.Qt import QRect
 # from PyQt5 import QtWebEngineWidgets
@@ -2012,16 +2012,17 @@ class ResourceWeeklyTotalTable(QTableWidget):
                             totalhours=user_weeklyresources['Hours'].sum()
                             totalhours= int(totalhours) if totalhours == int(totalhours) else round(totalhours, 2) #if totalhours is a whole number, convert to int
                             i, j = self.rowLabels.index(user), self.columnLabels.index(week)
-                            self.setItem(i,j,NumericalTableWidgetItem(f"{totalhours}"))
                             # print(user_weeklyresources)
                             # self.item(i,j).setData(256, totalhours)
                             # self.item(i,j).setData(257, user_weeklyresources)
-                            self.item(i,j).setToolTip("\n".join([f"{rsc['ProjectName']}: {rsc['TaskDesc']}: {rsc['Hours']}" for rsc in user_weeklyresources.to_dict('records')]))
                             user_week_hol=holidays[(holidays['week_start']==datetime.strptime(week,'%d/%m/%Y')) & (holidays['user'].isin([user,'General']))]
+                            tooltip= "\n".join([f"{rsc['ProjectName']}: {rsc['TaskDesc']}: {rsc['Hours']}" for rsc in user_weeklyresources.to_dict('records')])
                             if not user_week_hol.empty:
                                 hol_days=user_week_hol['total_days'].sum()
-                                self.item(i,j).setToolTip(f"{self.item(i,j).toolTip()}\n\nHolidays: {hol_days} days") 
+                                tooltip+=f"\n\nHolidays: {hol_days} days"
                                 totalhours+=(hol_days*7.5)
+                            self.setItem(i,j,NumericalTableWidgetItem(f"{totalhours}"))
+                            self.item(i,j).setToolTip(tooltip)
                             #tooltip in format "Project Name: Task Description: Hours: "
                             self.item(i,j).setBackground(self.get_business_color(totalhours))
 
@@ -2123,7 +2124,7 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
 
                 #populate the holidays for the user for the weeks
                 if holidays is not None and not holidays.empty:
-                    self.setVerticalHeaderItem(i, QTableWidgetItem("Holidays"))
+                    self.setVerticalHeaderItem(i, QTableWidgetItem("Holiday"))
                     for week in self.columnLabels:
                         user_week_hol=holidays[(holidays['week_start']==datetime.strptime(week,'%d/%m/%Y')) & (holidays['user'].isin([user,'General']))]
                         if not user_week_hol.empty:
@@ -2761,7 +2762,7 @@ class TimesheetModel():
     @staticmethod
     def add_timesheet_entries(conn, cursor, entries):
         try:
-            cursor.executemany("INSERT INTO TimesheetEntries (TimesheetID, ProjectNo, ProjectName, Task, Mon, Tue, Wed, Thu, Fri) VALUES (?,?,?,?,?,?,?,?,?);", entries)
+            cursor.executemany("INSERT INTO TimesheetEntries (TimesheetID, ProjectNo, ProjectName, Task, Mon, Tue, Wed, Thu, Fri, Sat, Sun) VALUES (?,?,?,?,?,?,?,?,?,?,?);", entries)
             conn.commit()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -2821,27 +2822,40 @@ class TimeSheetWindow(QMainWindow):
             # self.weekBegin.currentTextChanged.connect(lambda: self.projectStatusChanged(self.userBox.checkedText))#Connecting the change in the drop-down to its function
 
             userLabel=QLabel("Employee:")
-            userLabel.setStyleSheet("font-size:11pt; color:rgba(0,0,0,0.9); font-weight:bold; font-family:'Lato';")
+            userLabel.setStyleSheet("font-size:11pt; font-weight:bold; font-family:'Lato'; padding-left:10px; padding-right:10px; background:white; border: 1px solid rgba(176, 196, 84, 0.9); border-right: none;")   
             userLabel.setAlignment(Qt.AlignCenter)
             weekBeginLabel=QLabel("Week:")
-            weekBeginLabel.setStyleSheet("font-size:11pt; color:rgba(0,0,0,0.9); font-weight:bold; font-family:'Lato';")
+            weekBeginLabel.setStyleSheet("font-size:11pt;font-weight:bold; font-family:'Lato'; padding-left:10px; padding-right:10px; background:white; border: 1px solid rgba(176, 196, 84, 0.9); border-right: none;")
             weekBeginLabel.setAlignment(Qt.AlignCenter)
+
+            
+            self.submittedLabel=ToolButton("Submitted", icon=tickdone_icon2, icon_width=20, icon_height=20,  min_height=32, buttonStyle=Qt.ToolButtonTextBesideIcon, styleSheet="""
+                QToolButton { font-size: 10pt; font-family: 'Lato';background: none; border: none; padding-left: 5px; }
+                QToolButton:hover { background: none; }
+                QToolButton:pressed { background: none; } """)
+            self.submittedLabel.setVisible(False)
+
             user_weekBeginLayout=QHBoxLayout()
             # user_weekBeginLayout.addSpacing(10)
             user_weekBeginLayout.addWidget(userLabel)
-            user_weekBeginLayout.addSpacing(5)
+            # user_weekBeginLayout.addSpacing(5)
             user_weekBeginLayout.addWidget(self.userBox)
             # user_weekBeginLayout.addStretch(1)
-            user_weekBeginLayout.addSpacing(300)
+            user_weekBeginLayout.addSpacing(200)
             user_weekBeginLayout.addWidget(weekBeginLabel)
-            user_weekBeginLayout.addSpacing(5)
+            # user_weekBeginLayout.addSpacing(5)
             user_weekBeginLayout.addWidget(self.weekBeginBox)
+            # user_weekBeginLayout.addSpacing(50)
+            user_weekBeginLayout.addStretch(1)
+            user_weekBeginLayout.addWidget(self.submittedLabel)
             user_weekBeginLayout.addStretch(1)
             user_weekBeginLayout.setSpacing(0)
 
             self.timeSheetTable=TimeSheetTable()
-            self.saveChangesButton=ToolButton(" Save Changes ",min_height=35, styleSheet="font-size:11pt; font-family:'Lato';", clicked=self.saveChanges)
-            self.submitButton=ToolButton(" Submit ", icon=submit_icon, icon_width=25, icon_height=25,  min_height=42, buttonStyle=Qt.ToolButtonTextBesideIcon, styleSheet="font-size:12pt; font-family:'Lato';", clicked=self.submitTimesheet)
+            self.timeSheetTable.setStyleSheet("QTableWidget{border: 1px solid rgba(176, 196, 84, 0.9); font-size:9.5pt; font-family:'Lato';}")
+            self.timeSheetTable.totalTable.setStyleSheet("QTableWidget{border: 1px solid rgba(176, 196, 84, 0.9);}")
+            self.saveChangesButton=ToolButton(" Save Changes ", icon=savechanges_icon, icon_width=24, icon_height=24, min_height=35, buttonStyle=Qt.ToolButtonTextBesideIcon, styleSheet="font-size:11pt; font-family:'Lato';", clicked=self.saveChanges)
+            self.submitButton=ToolButton(" Submit ", icon=submit_icon, icon_width=25, icon_height=25,  min_height=35, buttonStyle=Qt.ToolButtonTextBesideIcon, styleSheet="font-size:11pt; font-family:'Lato';", clicked=self.submitTimesheet)
 
             save_submit_layout=QHBoxLayout()
             save_submit_layout.addStretch(1)
@@ -2868,6 +2882,7 @@ class TimeSheetWindow(QMainWindow):
             timesheetLabel.setMinimumWidth(300)
             timesheetLabel.setMaximumHeight(30)
             timesheetLabel.setStyleSheet("QLabel{background-color: #b0c454; color: white;}")
+            
             logoLayout=QHBoxLayout()
             logoLayout.addSpacing(50)
             logoLayout.addWidget(logo)
@@ -2875,8 +2890,9 @@ class TimeSheetWindow(QMainWindow):
             logoLayout.addWidget(timesheetLabel)
             logoLayout.addStretch(3)
 
+
             boardLayout=QGridLayout()
-            boardLayout.addLayout(user_weekBeginLayout, 2, 0, 1, 3)
+            boardLayout.addLayout(user_weekBeginLayout, 2, 0, 1, 4)
 
             boardLayout.addWidget(self.timeSheetTable, 3, 0, 1, 5)
             boardLayout.addWidget(self.timeSheetTable.totalTable, 4, 0, 1, 5)
@@ -2909,7 +2925,7 @@ class TimeSheetWindow(QMainWindow):
             Page.setLayout(MainLayout)
             self.setCentralWidget(Page)
 
-            self.statusBar().setStyleSheet("background-color:lightgray; font-size:19px;")
+            self.statusBar().setStyleSheet("background-color:lightgray; font-size:12pt; font-family:'Lato';")
             menuBar = self.menuBar()
             homeMenu = QAction(icon=QIcon(home_icon), parent= self)
             backMenu= QAction(icon=QIcon(back_icon), parent= self)
@@ -2937,15 +2953,20 @@ class TimeSheetWindow(QMainWindow):
                     if submitted:
                         # self.statusBar().showMessage("Timesheet submitted", 1000)
                         enableEdits=False
+                        self.submittedLabel.setVisible(True)
                     else:
                         enableEdits=True
+                        self.submittedLabel.setVisible(False)
                 else:
                     self.timeSheetTable.populateDefaultProjects(self.userBox.currentText(), self.weekBeginBox.currentText())
                     enableEdits=True
+                    self.submittedLabel.setVisible(False)
                 cursor.close()
                 conn.close()
             else:
                 self.timeSheetTable.populateDefaultProjects(self.userBox.currentText(), self.weekBeginBox.currentText())
+                self.submittedLabel.setVisible(False)
+                MsgBox("Timesheet file '" +timesheetpath+"' does not exist\n\nPlease contact software programmer", setWindowTitle="Timesheet file for "+self.userBox.currentText()+" does not exist", setIcon = QMessageBox.Information)
             self.timeSheetTable.setEditable(enableEdits)
             self.saveChangesButton.setEnabled(enableEdits)
             self.submitButton.setEnabled(enableEdits)
@@ -2974,12 +2995,12 @@ class TimeSheetWindow(QMainWindow):
                     timesheetentries=[]
                     #loop through the table and fetch the data to append to the timesheetentries list
                     for row in range(self.timeSheetTable.rowCount()):
-                        if self.timeSheetTable.cellWidget(row, 0).text()!="" or self.timeSheetTable.cellWidget(row, 1).text()!="":
-                            projectno=self.timeSheetTable.cellWidget(row, 0).text()
-                            projectname=self.timeSheetTable.cellWidget(row, 1).text()
+                        if self.timeSheetTable.item(row, 0).text()!="" or self.timeSheetTable.item(row, 1).text()!="":
+                            projectno=self.timeSheetTable.item(row, 0).text()
+                            projectname=self.timeSheetTable.item(row, 1).text()
                             task=self.timeSheetTable.item(row, 2).text() if self.timeSheetTable.item(row, 2) and self.timeSheetTable.item(row,2).text() else None
-                            mon_fri_hours=[self.timeSheetTable.item(row, col).text() if self.timeSheetTable.item(row, col) and self.timeSheetTable.item(row, col).text()!="" else None for col in range(3,8)]
-                            timesheetentries.append((timesheet_id, projectno, projectname, task, mon_fri_hours[0], mon_fri_hours[1], mon_fri_hours[2], mon_fri_hours[3], mon_fri_hours[4]))
+                            mon_sun_hours=[self.timeSheetTable.item(row, col).text() if self.timeSheetTable.item(row, col) and self.timeSheetTable.item(row, col).text()!="" else None for col in range(3,10)]
+                            timesheetentries.append((timesheet_id, projectno, projectname, task, mon_sun_hours[0], mon_sun_hours[1], mon_sun_hours[2], mon_sun_hours[3], mon_sun_hours[4], mon_sun_hours[5], mon_sun_hours[6]))
                     if timesheetentries:
                         TimesheetModel.add_timesheet_entries(conn, cursor, timesheetentries)
                     
@@ -2991,7 +3012,6 @@ class TimeSheetWindow(QMainWindow):
                         self.statusBar().showMessage("Changes saved", 5000)
                 cursor.close()
                 conn.close()
-                
             else:
                 MsgBox("Timesheet file '" +timesheetpath+"' does not exist", setWindowTitle="Error", setIcon = QMessageBox.Critical)
         except:
@@ -3000,7 +3020,7 @@ class TimeSheetWindow(QMainWindow):
     def submitTimesheet(self):
         try:
             qm = QMessageBox()
-            ret = qm.question(self, 'Submit Timesheet', "Are you sure you want to submit the timesheet?\n\nOnce submitted, the timesheet cannot be edited", qm.Yes | qm.No)
+            ret = qm.question(self, 'Submit Timesheet', "Are you sure you want to submit the timesheet?\n\nOnce submitted, the timesheet can't be further edited", qm.Yes | qm.No)
             if ret == QMessageBox.Yes:
                 self.saveChanges(submit=True)
         except:
@@ -3010,14 +3030,31 @@ class TimeSheetTable(QTableWidget):
     def __init__(self):
         try:
             super().__init__()
-            class NumericDelegate(QStyledItemDelegate):
+            self.projectsDict={'':''}
+            self.projectsDict.update({proj.split(' - ',1)[0]:proj.split(' - ',1)[1] for proj in glob_Project3Code_dict})
+            self.projectNos=list(self.projectsDict.keys())
+            self.projectNames=list(self.projectsDict.values()) +['Holiday']
+            class CustomDelegate(QStyledItemDelegate):
                 def createEditor(self, parent, option, index):
                     editor = QLineEdit(parent)
-                    col=index.column()  
-                    if col in range(3,8):
+                    row, col = index.row(), index.column()
+                    timeSheetTable=parent.parent()
+                    if col == 0:
+                        editor.setCompleter(QCompleter(timeSheetTable.projectNos))
+                        editor.editingFinished.connect(lambda r=row: timeSheetTable.projectNoChanged(r, editor.text()))
+                        editor.completer().activated.connect(lambda text, r=row: timeSheetTable.projectNoChanged(r, text))
+                    elif col == 1:
+                        projectNameCompleter=QCompleter(timeSheetTable.projectNames)
+                        projectNameCompleter.setCaseSensitivity(Qt.CaseInsensitive)
+                        projectNameCompleter.setFilterMode(Qt.MatchContains)
+                        editor.setCompleter(projectNameCompleter)
+                        editor.editingFinished.connect(lambda r=row: timeSheetTable.projectNameChanged(r, editor.text()))
+                        editor.completer().activated.connect(lambda text, r=row: timeSheetTable.projectNameChanged(r, text))
+                    elif col in range(3,10):
                         editor.setValidator(QDoubleValidator())
                     return editor
-            self.setItemDelegate(NumericDelegate()) #set the delegate for the table to be restricted to numbers only for the Mon to Fri columns
+
+            self.setItemDelegate(CustomDelegate()) #set the delegate for the table to be restricted to numbers only for the Mon to Fri columns
             # self.columnLabels=['Project No.', 'Project Name', 'Task', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Subtotal']
             self.columnLabels=['Project No.', 'Project Name', 'Task', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN', 'Subtotal']
             self.setColumnCount(len(self.columnLabels))
@@ -3033,12 +3070,8 @@ class TimeSheetTable(QTableWidget):
             # self.verticalHeader().setVisible(False)
             
             self.totalTable=QTableWidget(1, len(self.columnLabels))
-            for i in range(len(self.columnLabels)):
-                self.totalTable.setItem(0, i, QTableWidgetItem(""))
-            self.totalTable.item(0, 1).setText("TOTAL")
+            
             self.totalTable.setVerticalHeaderLabels([""])
-            self.setStyleSheet("QTableWidget{ border: none;}")
-            self.totalTable.setStyleSheet("QTableWidget{font-size:17px; font-family:'Lato';font-weight:bold; border: none;}")
             # self.totalTable.setRowHeight(0, 10)
             #span the total table
             self.totalTable.setSpan(0, 1, 1, 2)
@@ -3070,10 +3103,7 @@ class TimeSheetTable(QTableWidget):
             self.totalTable.horizontalScrollBar().valueChanged.connect(self.horizontalScrollBar().setValue)
             self.totalTable.setMaximumHeight(60)
 
-            self.projectsDict={'':''}
-            self.projectsDict.update({proj.split(' - ',1)[0]:proj.split(' - ',1)[1] for proj in glob_Project3Code_dict})
-            self.projectNos=list(self.projectsDict.keys())
-            self.projectNames=list(self.projectsDict.values())
+            
              
             self.initiateRows()
         except:
@@ -3083,71 +3113,48 @@ class TimeSheetTable(QTableWidget):
         try:
             # self.setUpdatesEnabled(False)
             self.cellChanged.disconnect()
+            subtotalBackground=QColor(200, 200, 200)
+            subtotalFont=QFont("Lato", 10, QFont.Bold)
             #Set up to 50 rows
             self.setRowCount(50)
-            
             subtotalindex=self.columnLabels.index('Subtotal')
             for row in range(50):
-                
-                projectnoEdit=QLineEdit()
-                projectNoCompleter=QCompleter(self.projectNos)
-                projectnoEdit.setCompleter(projectNoCompleter)
-                projectnoEdit.editingFinished.connect(lambda r=row: self.projectNoChanged(r))
-                projectnoEdit.completer().activated.connect(lambda text, r=row: self.projectNoChanged(r))
-                self.setCellWidget(row, 0, projectnoEdit)
-
-
-                projectnameEdit=QLineEdit()
-                projectNameCompleter=QCompleter(self.projectNames)
-                projectNameCompleter.setCaseSensitivity(Qt.CaseInsensitive)
-                projectNameCompleter.setFilterMode(Qt.MatchContains)
-                projectnameEdit.setCompleter(projectNameCompleter)
-                projectnameEdit.editingFinished.connect(lambda r=row: self.projectNameChanged(r))
-                projectnameEdit.completer().activated.connect(lambda text, r=row: self.projectNameChanged(r))
-                self.setCellWidget(row, 1, projectnameEdit)
-
-                for col in range(2, 10):
-                    self.setItem(row, col, NumericalTableWidgetItem(""))
-
+                for col in range(10):
+                    self.setItem(row, col, QTableWidgetItem(""))
 
                 subtotalitem=QTableWidgetItem()
+                subtotalitem.setBackground(subtotalBackground)
+                subtotalitem.setFont(subtotalFont)
                 #disable editing of the subtotal cell
                 subtotalitem.setFlags(subtotalitem.flags() & ~Qt.ItemIsEditable)
-                # subtotalitem.setFlags(Qt.NoItemFlags)
                 self.setItem(row, subtotalindex, subtotalitem)
-            #     projectnoBox=QComboBox()
-            #     # projectnoBox.setStyleSheet("QComboBox{padding-left:10px; font-size:15px; font-family:'Lato';}")
-            #     # projectnoBox.addItems(self.projectsDict.keys())
-            #     self.setCellWidget(row, 0, projectnoBox)
-            #     projectnoBox.currentTextChanged.connect(lambda text, r=row: self.projectNoChanged(text,r))
-
-            #     projectnameBox=QComboBox()
-            #     # projectnameBox.setStyleSheet("QComboBox{padding-left:10px; font-size:15px; font-family:'Lato';}")
-            #     # projectnameBox.addItems(self.projectsDict.values())
-            #     self.setCellWidget(row, 1, projectnameBox)
-            #     projectnameBox.currentTextChanged.connect(lambda text, r=row :self.projectNameChanged(text, r))
-            # # self.setUpdatesEnabled(True)
+            
+            for i in range(len(self.columnLabels)-1):
+                totalitem=QTableWidgetItem("")
+                totalitem.setBackground(subtotalBackground)
+                totalitem.setFont(subtotalFont)
+                self.totalTable.setItem(0, i, totalitem)
+            self.totalTable.setItem(0,i+1, QTableWidgetItem(""))
+            self.totalTable.item(0, i+1).setFont(QFont("Lato", 11, QFont.Bold))
+            # self.totalTable.item(0, i+1).setBackground(QColor(
+            
+            self.totalTable.item(0, 1).setText("TOTAL")
             self.cellChanged.connect(self.oncellChanged)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    def projectNoChanged(self, row):
+    def projectNoChanged(self, row, no):
         try:
-            # self.cellWidget(row, 1).setCurrentText(self.projectsDict[no])
-            no=self.cellWidget(row, 0).text()
             if no in self.projectsDict:
-                self.cellWidget(row, 1).setText(self.projectsDict[no])
+                self.item(row, 1).setText(self.projectsDict[no])
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    def projectNameChanged(self, row):
+    def projectNameChanged(self, row,name):
         try:
-            # # self.cellWidget(row, 0).setCurrentText(list(self.projectsDict.keys())[list(self.projectsDict.values()).index(name)])
-            # self.cellWidget(row, 0).setCurrentText([no for no, n in self.projectsDict.items() if n==name][0])
-            name=self.cellWidget(row, 1).text()
             for no, n in self.projectsDict.items():
                 if n==name:
-                    self.cellWidget(row, 0).setText(no)
+                    self.item(row, 0).setText(no)
                     break
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -3155,17 +3162,18 @@ class TimeSheetTable(QTableWidget):
     def setEditable(self, editable):
         try:
             self.cellChanged.disconnect()
+            editableBackGround=QColor(255, 255, 255)
+            nonEditableBackGround=QColor(230, 230, 230)
             for row in range(self.rowCount()):
-                for col in range(2):
-                    if self.cellWidget(row, col):
-                        self.cellWidget(row, col).setEnabled(editable)
-                    
-                for col in range(2, 10):
-                    if self.item(row, col):
-                        if editable:
-                            self.item(row, col).setFlags(self.item(row, col).flags() | Qt.ItemIsEditable)
-                        else:
-                            self.item(row, col).setFlags(self.item(row, col).flags() & ~Qt.ItemIsEditable)
+                for col in range(10):
+                    # if self.item(row, col):
+                    if editable:
+                        self.item(row, col).setFlags(self.item(row, col).flags() | Qt.ItemIsEditable)
+                        self.item(row, col).setBackground(editableBackGround)
+                    else:
+                        self.item(row, col).setFlags(self.item(row, col).flags() & ~Qt.ItemIsEditable)
+                        self.item(row, col).setBackground(nonEditableBackGround)
+
             self.cellChanged.connect(self.oncellChanged)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -3174,10 +3182,8 @@ class TimeSheetTable(QTableWidget):
         try:
             for row in range(self.rowCount()):
                 for col in range(self.columnCount()):
-                    if self.cellWidget(row, col):
-                        self.cellWidget(row, col).setText("")
-                    elif self.item(row, col):
-                        self.item(row, col).setText("")
+                    # if self.item(row, col):
+                    self.item(row, col).setText("")
             for col in range(3, 11):
                 self.totalTable.item(0, col).setText("")
         except:
@@ -3190,8 +3196,8 @@ class TimeSheetTable(QTableWidget):
             projects=Resources_df[(Resources_df["RscFor"]==user) & (Resources_df["Week"]==datetime.strptime(weekBegin,'%d/%m/%Y'))].loc[:,["ProjectNo", "ProjectName"]].drop_duplicates().values
             for row, proj in enumerate(projects):
                 if row>=self.rowCount(): break
-                self.cellWidget(row, 0).setText(proj[0])
-                self.cellWidget(row, 1).setText(proj[1])
+                self.item(row, 0).setText(proj[0])
+                self.item(row, 1).setText(proj[1])
                 
             self.cellChanged.connect(self.oncellChanged)
         except:
@@ -3207,22 +3213,17 @@ class TimeSheetTable(QTableWidget):
             
             #Populate the table with the timesheet entries
             for row, entry in enumerate(timesheetentries):
-                self.cellWidget(row, self.columnLabels.index("Project No.")).setText(entry[2]) 
-                self.cellWidget(row, self.columnLabels.index("Project Name")).setText(entry[3])
+                self.item(row, self.columnLabels.index("Project No.")).setText(entry[2]) 
+                self.item(row, self.columnLabels.index("Project Name")).setText(entry[3])
                 self.item(row, self.columnLabels.index("Task")).setText(entry[4])
-                for col in range(3,8):
+                for col in range(3,10):
                     hours=entry[col+2]
                     if hours!=None:
                         hours=round(hours, 1) if round(hours, 1)==round(hours, 2) else round(hours, 2)
                         hours=hours if hours%1!=0 else int(hours)
                         self.item(row, col).setText(f"{hours}")
                 self.updateSubTotal(row)
-            for col in range(3, 8): self.updateTotal(col)
-                # subtotal=entry[10]
-                # if subtotal!=None:
-                #     subtotal=round(subtotal, 1) if round(subtotal, 1)==round(subtotal, 2) else round(subtotal, 2)
-                #     subtotal=subtotal if subtotal%1!=0 else int(subtotal)
-                #     self.item(row, self.columnLabels.index("Subtotal")).setText(f"{subtotal}")
+            for col in range(3, 10): self.updateTotal(col)
             self.cellChanged.connect(self.oncellChanged)
             # print("Table populated")
             # self.setUpdatesEnabled(True)
@@ -3231,7 +3232,7 @@ class TimeSheetTable(QTableWidget):
 
     def oncellChanged(self, row, col):
         try:
-            if col in range(3, 8):
+            if col in range(3, 10):
                 self.updateSubTotal(row)
                 self.updateTotal(col)
         except:
@@ -3240,7 +3241,7 @@ class TimeSheetTable(QTableWidget):
     def updateSubTotal(self, row):
         try:
             rowSubtotal=0
-            for c in range(3, 8):
+            for c in range(3, 10):
                 if self.item(row, c) and self.item(row, c).text()!="":
                     rowSubtotal+=float(self.item(row, c).text())
 
@@ -15186,6 +15187,7 @@ if __name__ == "__main__":
             user_icon= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\user_icon.ico"
             newuser_icon= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\newuser_icon.ico"
             template_icon= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\template_icon.ico"
+            savechanges_icon= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\savechanges_icon.ico"
             submit_icon= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\submit_icon.ico"
 
             RCDC_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\logo no background.ico"
@@ -15228,8 +15230,8 @@ if __name__ == "__main__":
             # print("Initwindow ended", time.time()-start_time)
             # start_time= time.time() 
             widget.addWidget(initwindow)
-            # initwindow.Page.setCurrentIndex(1)
-            initwindow.resourceWidget.timesheetClicked()
+            # # initwindow.Page.setCurrentIndex(1)
+            # initwindow.resourceWidget.timesheetClicked()
 
             # initwindow.resourceWidget.rscManager.usersFilterBox.setCurrentText("All users")
 
