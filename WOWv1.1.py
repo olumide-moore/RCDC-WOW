@@ -36,7 +36,7 @@ from os import mkdir,makedirs, rename, listdir, path, startfile, remove, environ
 from PyQt5.QtWidgets import QTabWidget,  QDateEdit, QInputDialog, QRadioButton, QFileDialog, QDoubleSpinBox, QListView, QListWidgetItem, QShortcut,  QTextEdit, QWidget, QMainWindow, QApplication, QScrollArea, QAction, QLineEdit,\
     QStackedWidget, QTableWidget, QCalendarWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QMenu, QTableWidgetItem,QHeaderView, \
             QAbstractItemView, QLabel, QDialogButtonBox, QListWidget, QCheckBox, QFrame, QPushButton, QToolButton, QComboBox, QMessageBox, \
-                QDialog, QFormLayout, QGroupBox, QWhatsThis, QSizePolicy, QAbstractScrollArea, QTimeEdit, QSplitter, QStyle, QStyledItemDelegate
+                QDialog, QFormLayout, QGroupBox, QWhatsThis, QSizePolicy, QAbstractScrollArea, QTimeEdit, QSplitter, QStyle, QStyledItemDelegate, QCompleter
 from PyQt5.QtGui import QDragEnterEvent, QIcon, QKeySequence, QPixmap, QFont, QColor, QDropEvent, QRegExpValidator, QDoubleValidator, QFontDatabase, QCursor, QBrush
 from PyQt5.Qt import QRect
 # from PyQt5 import QtWebEngineWidgets
@@ -141,49 +141,8 @@ def updateJsonData():
         #This displays any errors encountered as a msgbox rather just shutting down when there's error
         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-def fetchAllResources(includeHolidays=False):
+def fetchAllResources():
     try:
-        def split_into_weeks(row):
-            try:
-                #get the days taken for each calenndar week from the row
-                weeks= []
-                total_days= row['daysTaken']
-                current_start= row['start']
-                # end= row['end']
-                while total_days>0:
-                    week_start= current_start - timedelta(days=current_start.weekday()) #get the first day of the week
-                    week_end= week_start + timedelta(days=4) #get the last day of the week (Friday)
-                    days_in_week= min((week_end-current_start).days + 1, total_days) #get the number of days booked in the week
-                    
-                    weeks.append({"Week":week_start, "Hours": days_in_week*7.5})
-
-                    total_days-= days_in_week
-                    current_start= week_end + timedelta(days=3) #add 3 days to get to the next week Monday
-                return weeks
-            except:
-                MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-        def getHolidays():
-            try:
-                userHolidays=[]
-                for usr in json_data["employees"]:
-                    userHolidays.extend(list(map(lambda x: (x['name'], x['for'], x['daysTaken'],x['start'], x['end']), usr['holidays'])))
-                userHolidays= pd_DataFrame(userHolidays, columns=["name", "for","daysTaken","start","end"])
-                generalholidays= pd_DataFrame(json_data["generalholidays"], columns=["name", "for","daysTaken","start","end"])
-                holidays=pd_concat([userHolidays,generalholidays], ignore_index=True)
-                if not holidays.empty: 
-                    holidays["start"]= pd_to_datetime(holidays["start"], dayfirst=True)
-                    holidays["end"]= pd_to_datetime(holidays["end"], dayfirst=True)
-                #get the first day of the week for each holiday
-                holidays["weekstart"]= holidays["start"].apply(lambda x: x - timedelta(days=x.weekday()))
-                expanded_holidays=[]
-                for index, row in holidays.iterrows():
-                    weeks= split_into_weeks(row)
-                    for week in weeks:
-                        expanded_holidays.append({'RscFor': row['for'], 'RscBy': '', 'EditBy': '', 'ProjectNo': '', 'ProjectName': 'Holiday', 'Week': week['Week'], 'Hours': week['Hours'], 'TaskDesc': row['name'], 'Stage': '', 'Status': '', 'OpenDate': '', 'filename': ''})
-                holidays= pd_DataFrame(expanded_holidays)
-                return holidays
-            except:
-                MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
         global Resources_df
         #Fetch resources from the json files
         all_resources=[]
@@ -212,28 +171,6 @@ def fetchAllResources(includeHolidays=False):
         Resources_df['Stage'] = Resources_df['Weeks'].apply(lambda x: x['Stage'] if type(x)==dict else None)
         #drop the weeks column
         Resources_df.drop(columns=['Weeks'], inplace=True)
-
-        if includeHolidays==True: 
-            #Fetch holidays from the json_data
-            global Resources_holidays_df
-            Resources_holidays_df=getHolidays()
-        # print("")
-                # for file in listdir(users_jsons+"\\"+folder+"\\Resources"):
-                #     if file.startswith("Rsc-")  and file.endswith(".json"):
-                #         with open(users_jsons+"\\"+folder+"\\Resources\\"+file,'r') as json_file:
-                #             data = json_load(json_file)
-                #             data["filename"]=file  
-                #             self.resourcesByUser[folder].append(data)
-                #             if f"{data['ProjectNo']} - {data['ProjectName']}" not in self.resourcesByProject: self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"]=[]
-                #             self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"].append(data)
-                # for file in listdir(users_jsons+"\\"+folder+"\\Resources\\Completed"):
-                #     if file.startswith("Rsc-")  and file.endswith(".json"):
-                #         with open(users_jsons+"\\"+folder+"\\Resources\\Completed\\"+file,'r') as json_file:
-                #             data = json_load(json_file)
-                #             data["filename"]=file  
-                #             self.resourcesByUser[folder].append(data)
-                #             if f"{data['ProjectNo']} - {data['ProjectName']}" not in self.resourcesByProject: self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"]=[]
-                #             self.resourcesByProject[f"{data['ProjectNo']} - {data['ProjectName']}"].append(data)
     except:
         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -384,93 +321,6 @@ def refreshMainWindow():
         widget.addWidget(initwindow) 
     except :
         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-
-class TimsheetModel():
-    @staticmethod
-    def timesheet_exists(cursor, weekBegin):
-        try:
-            cursor.execute("SELECT * FROM Timesheet WHERE WeekBegin=?;", (weekBegin,)) #Get all records withe week beginning
-            return cursor.fetchone() is not None
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    @staticmethod
-    def add_timesheet_if_not_exists(conn, cursor, weekBegin):
-        try:
-            if not TimsheetModel.timesheet_exists(cursor, weekBegin):
-                cursor.execute("INSERT INTO Timesheet (WeekBegin) VALUES (?);", (weekBegin,))
-                conn.commit()
-            return cursor.execute("SELECT * FROM Timesheet WHERE WeekBegin=?;", (weekBegin,)).fetchone()[0]
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def get_timesheet_id(cursor, weekBegin):
-        try:
-            cursor.execute("SELECT * FROM Timesheet WHERE WeekBegin=?;", (weekBegin,)) #Get all records withe week beginning
-            data= cursor.fetchone()
-            if data is not None:
-                return data[0]
-            return None
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    @staticmethod
-    def add_timesheet_entries(conn, cursor, entries):
-        try:
-            cursor.executemany("INSERT INTO TimesheetEntries (TimesheetID, ActualDate, ProjectNo, ProjectName, Task, Hours ) VALUES (?,?,?,?,?,?);", entries)
-            conn.commit()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    @staticmethod
-    def get_timesheet_entries(cursor, timesheet_id):
-        try:
-            cursor.execute("SELECT * FROM TimesheetEntries WHERE TimesheetID=?;", (timesheet_id,)) #Get all records withe week beginning
-            return cursor.fetchall()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    @staticmethod
-    def fetchUserTimesheet(usr, weekBegin=None):
-        try:
-            timesheetpath=users_jsons+"\\"+usr+"\\Timesheet.accdb"
-            if path.exists(timesheetpath):
-                con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+timesheetpath+';'
-                conn = pyodbc_connect(con_string) #Create a connection to open the database file
-                cursor =conn.cursor()            
-                if weekBegin==None:
-                    cursor.execute("SELECT * FROM Timesheet;") 
-                else:
-                    cursor.execute(f"SELECT * FROM Timesheet WHERE WeekBegin='{weekBegin}';") #Get all records withe week beginning
-                data= cursor.fetchall()
-                # columns = tuple([column[0] for column in cursor.description]) #Get the column names of the table
-                cursor.close()
-                conn.close()    #Close cursor and connection
-                return data
-            else:
-                return []
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    @staticmethod
-    def fetchUserEntries(usr, weekBegin=None):
-        try:
-            timesheetpath=users_jsons+"\\"+usr+"\\Timesheet.accdb"
-            if path.exists(timesheetpath):
-                con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+timesheetpath+';'
-                conn = pyodbc_connect(con_string) #Create a connection to open the database file
-                cursor =conn.cursor()     
-                if weekBegin==None:       
-                    cursor.execute("SELECT * FROM TimesheetEntries;")
-                else:
-                    cursor.execute(f"SELECT * FROM TimesheetEntries WHERE WeekBegin='{weekBegin}';") #Get all records withe week beginning 
-                data= cursor.fetchall()
-                # columns = tuple([column[0] for column in cursor.description]) #Get the column names of the table
-                cursor.close()
-                conn.close()    #Close cursor and connection
-                return data
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
 
 class Admin_Dialog(QDialog):
     def __init__(self, projectindex):
@@ -2059,7 +1909,22 @@ class ResourceWeeklyTotalTable(QTableWidget):
     def __init__(self):
         try:
             super().__init__()
-            
+            #Delegate for transparent color in selected cells
+            class CustomDelegate(QStyledItemDelegate):
+                def paint(self, painter, option, index):
+                    if option.state & QStyle.State_Selected:
+                        # Preserve the original background color or set a default color
+                        brush = index.data(Qt.BackgroundRole)
+                        if brush is None:
+                            brush = QBrush(QColor(208,236,252,150))  # Set a default color if no background is set
+                        painter.save()
+                        painter.fillRect(option.rect, brush)
+                        painter.restore()
+                        option.state &= ~QStyle.State_Selected
+
+                    super().paint(painter, option, index)
+
+
             self.rowLabels=[emp for emp in RCDC_employees if emp not in ['OO', 'TS']]
             self.columnLabels=[]
             self.setRowCount(len(self.rowLabels))
@@ -2085,7 +1950,7 @@ class ResourceWeeklyTotalTable(QTableWidget):
             self.norm=Normalize(vmin=0, vmax=50)
 
             #delegate for transparent color in selected cells
-            delegate=  CustomDelegate()
+            delegate= CustomDelegate()
             self.setItemDelegate(delegate)
 
             self.installEventFilter(self)
@@ -2119,7 +1984,7 @@ class ResourceWeeklyTotalTable(QTableWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    def populateTable(self, resources):
+    def populateTable(self, resources, holidays):
         try:           
             minweek, maxweek, weeks = getResourceMinMaxWeeks(resources)
 
@@ -2137,6 +2002,8 @@ class ResourceWeeklyTotalTable(QTableWidget):
                 for user in self.rowLabels:
                     #store the users resources in the vertical header 
                     self.verticalHeaderItem(self.rowLabels.index(user)).setData(257,resources[resources['RscFor']==user])
+                    if holidays is not None and not holidays.empty:
+                        self.verticalHeaderItem(self.rowLabels.index(user)).setData(258,holidays[holidays['user'].isin([user,'General'])])
                     for week in weeks:
                         #get the resources for the user in the week
                         user_weeklyresources=resources[(resources['RscFor']==user) & (resources['Week'].dt.strftime("%d/%m/%Y")==week)]
@@ -2147,10 +2014,15 @@ class ResourceWeeklyTotalTable(QTableWidget):
                             i, j = self.rowLabels.index(user), self.columnLabels.index(week)
                             self.setItem(i,j,NumericalTableWidgetItem(f"{totalhours}"))
                             # print(user_weeklyresources)
-                            self.item(i,j).setData(256, totalhours)
-                            self.item(i,j).setData(257, user_weeklyresources)
-                            #tooltip in format "Project Name: Task Description: Hours: "
+                            # self.item(i,j).setData(256, totalhours)
+                            # self.item(i,j).setData(257, user_weeklyresources)
                             self.item(i,j).setToolTip("\n".join([f"{rsc['ProjectName']}: {rsc['TaskDesc']}: {rsc['Hours']}" for rsc in user_weeklyresources.to_dict('records')]))
+                            user_week_hol=holidays[(holidays['week_start']==datetime.strptime(week,'%d/%m/%Y')) & (holidays['user'].isin([user,'General']))]
+                            if not user_week_hol.empty:
+                                hol_days=user_week_hol['total_days'].sum()
+                                self.item(i,j).setToolTip(f"{self.item(i,j).toolTip()}\n\nHolidays: {hol_days} days") 
+                                totalhours+=(hol_days*7.5)
+                            #tooltip in format "Project Name: Task Description: Hours: "
                             self.item(i,j).setBackground(self.get_business_color(totalhours))
 
                 for col in range(self.columnCount()):
@@ -2229,7 +2101,7 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    def populateTable(self, resources, user=None):
+    def populateTable(self, resources, user=None, holidays=None):
         try:           
             if self.forUsers:
                 if user in [None, self.currentUser]: return
@@ -2244,9 +2116,21 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
 
                 #get the unique index (since the indexes correspond to resource with same user and project)
                 unique_index=resources.index.unique()
-                self.setRowCount(len(unique_index))
+                self.setRowCount(len(unique_index)+1) if (holidays is not None and not holidays.empty) else self.setRowCount(len(unique_index))
                 #set row labels based on the unique index
                 i=0
+
+
+                #populate the holidays for the user for the weeks
+                if holidays is not None and not holidays.empty:
+                    self.setVerticalHeaderItem(i, QTableWidgetItem("Holidays"))
+                    for week in self.columnLabels:
+                        user_week_hol=holidays[(holidays['week_start']==datetime.strptime(week,'%d/%m/%Y')) & (holidays['user'].isin([user,'General']))]
+                        if not user_week_hol.empty:
+                            j = self.columnLabels.index(week)
+                            self.setItem(i,j,NumericalTableWidgetItem(f"{user_week_hol['total_days'].sum()*7.5}"))
+                    i+=1
+
                 for index in unique_index:
                     data=resources.loc[index]
                     if type(data)!=pd_DataFrame: data=pd_DataFrame(data).T
@@ -2264,6 +2148,9 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                             self.setItem(i,j,NumericalTableWidgetItem(f"{hours}"))
                     i+=1
 
+
+
+
                 #After populating, it is possible that some cells were previously edited and are not saved
                 #fill the edited cells with the previously edited values
                 for row in range(self.rowCount()):
@@ -2274,8 +2161,6 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                             hours= int(hours) if hours == int(hours) else round(hours, 2) #if hours is a whole number, convert to int
                             self.setItem(row,j,NumericalTableWidgetItem(f"{hours}"))
 
-
-
                 # #add an extra dropdown cell widget combobox for the user to add new resources
                 # self.setIndexWidget
                 # self.header=CustomComboBoxHeader()
@@ -2283,7 +2168,6 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
 
                 for col in range(self.columnCount()):
                     self.setColumnWidth(col, 120)
-                
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -2378,7 +2262,6 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
             return re_match(pattern, value) is not None
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
 
     def update_selected_cells(self):
         try:
@@ -2653,7 +2536,8 @@ class ResourceTabWidget(QWidget):
 
             # self.rscManager=ResourceManager(include_toolbuttons=True, include_period=False, include_resourcegeneraltable=False, include_chart=False, refreshResources=self.refreshResourceWindow, include_usersFilter=False, include_statistics=False, include_projectstatus_checkbox=False, updateDisplay=False)
             self.resourceWeeklyTotalTable=ResourceWeeklyTotalTable()
-            self.resourceWeeklyTotalTable.populateTable(Resources_df)
+            self.holidays= self.getHolidays()
+            self.resourceWeeklyTotalTable.populateTable(Resources_df, holidays=self.holidays)
 
             self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(forUsers=True, oncomplete=self.refreshResourceWindow, includeNewResourceButton=True, includeEditResourceButton=True)
 
@@ -2680,13 +2564,6 @@ class ResourceTabWidget(QWidget):
             font.setWeight(75)
             self.clickedUserLabel.setFont(font)
 
-
-            # busynessLayout=QGridLayout()
-            # # busynessLayout.addWidget(self.rscManager.busynessLabel, 0, 0)
-            # busynessLayout.addWidget(self.rscManager.busynessValue, 1, 0)
-            # busynessLayout.setHorizontalSpacing(50)
-
-
             # #select the current week in the total table to get the breakdown in the breakdown table
             self.resourceWeeklyTotalTable.setCurrentCell(0,self.resourceWeeklyTotalTable.columnLabels.index(QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1).toString("dd/MM/yyyy")))
 
@@ -2704,10 +2581,6 @@ class ResourceTabWidget(QWidget):
             self.OptionsLayout.addStretch(1)
 
             resourceBoardLayout=QGridLayout()
-            # resourceBoardLayout.addWidget(self.rscManager.usersFilterBox, 0, 0)
-            # resourceBoardLayout.addLayout(self.rscManager.periodLayout, 0, 1)
-            # resourceBoardLayout.addWidget(self.rscManager.resourceWeeklyTotalTable.resource_Search, 2, 0)
-            # resourceBoardLayout.addWidget(self.rscManager.busynessValue, 2, 1, Qt.AlignCenter)
             resourceBoardLayout.addWidget(self.resourceWeeklyTotalTable, 0, 0, 1, 5)
             # resourceBoardLayout.addWidget(self.rscManager.resourceChart, 3, 1)
             resourceBoardLayout.addWidget(self.clickedUserLabel, 1, 0)
@@ -2737,8 +2610,66 @@ class ResourceTabWidget(QWidget):
             self.resourceWeeklyBreakdownTable.copied_cells.clear()
             clickedUserItem=self.resourceWeeklyTotalTable.verticalHeaderItem(row)
             if clickedUserItem is not None:
-                self.clickedUserLabel.setText(clickedUserItem.text())
-                self.resourceWeeklyBreakdownTable.populateTable(clickedUserItem.data(257), clickedUserItem.text())
+                user=clickedUserItem.text()
+                self.clickedUserLabel.setText(user)
+                self.resourceWeeklyBreakdownTable.populateTable(resources=clickedUserItem.data(257), user=user, holidays=clickedUserItem.data(258))
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+ 
+    def getHolidays(self):
+        try:
+            # Helper function to generate week range for holidays (returns the Monday of every week between start and end dates)
+            def get_weeks_range(start, end):
+                #returns the Monday of every week between start and end date
+                start_weekMon = start - pd_DateOffset(days=start.weekday())
+                end_weekMon = end - pd_DateOffset(days=end.weekday())
+                weeks = pd_date_range(start_weekMon, end_weekMon, freq='W-MON')
+                return weeks
+
+            def expand_days_across_weeks(holidays):
+                holidays_df= pd_DataFrame(holidays, columns=["name", "for","daysTaken","start","end"])
+                holidays_df["start"]= pd_to_datetime(holidays_df["start"], dayfirst=True)
+                holidays_df["end"]= pd_to_datetime(holidays_df["end"], dayfirst=True)
+                # Expand user holidays into weekly data
+                expanded_holidays = []
+                for _, row in holidays_df.iterrows():
+                    start_date = row['start']
+                    end_date = row['end']
+                    days_taken = row['daysTaken']
+                    weeks = get_weeks_range(start_date, end_date)
+                    for week_Mon in weeks:
+                        week_Fri = week_Mon + pd_DateOffset(days=4)  # Friday
+                        if week_Mon == weeks[0]:
+                            #For the first week, the days taken is the minimum between the days taken and the number of days left in the week
+                            days = min(days_taken, (week_Fri - start_date).days + 1)
+                        elif week_Mon == weeks[-1]:
+                            days = days_taken
+                        else:
+                            days = min(days_taken, 5)
+                            
+                        expanded_holidays.append({'user': row['for'], 'week_start': week_Mon, 'days': days, 'name': row['name']})  
+                        days_taken -= days
+                        if days_taken <= 0:
+                            break
+                return pd_DataFrame(expanded_holidays)
+            
+            userHolidays=[]
+            for usr in json_data["employees"]:
+                userHolidays.extend(list(map(lambda x: (x['name'], x['for'], x['daysTaken'],x['start'], x['end']), usr['holidays'])))
+
+            user_weeks_df = expand_days_across_weeks(userHolidays)
+            general_weeks_df = expand_days_across_weeks(json_data["generalholidays"])
+
+            # Aggregate holidays by weekstart and sum the days for each week
+            user_agg = user_weeks_df.groupby(['user', 'week_start'])['days'].sum().reset_index()
+            general_agg = general_weeks_df.groupby(['week_start'])['days'].sum().reset_index()
+
+            # Merge user holidays with general holidays using the week start date 
+            result = pd_merge(user_agg, general_agg, on='week_start', how='outer', suffixes=('_user', '_general')).fillna(0)
+            result['total_days'] = result['days_user'] + result['days_general']
+            #fill userss column with 'General' if the user value is 0
+            result['user'] = result['user'].replace(0, 'General')
+            return result
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -2759,7 +2690,9 @@ class ResourceTabWidget(QWidget):
             # self.rscManager.resetResources()
             # self.rscManager.populateResourceGeneralTable()
             selected_user=self.resourceWeeklyBreakdownTable.currentUser
-            self.resourceWeeklyTotalTable.populateTable(Resources_df)
+            updateJsonData()
+            self.holidays= self.getHolidays()
+            self.resourceWeeklyTotalTable.populateTable(Resources_df, holidays=self.holidays)
             self.resourceWeeklyBreakdownTable.currentUser=None
             self.resourceWeeklyTotalTable.setCurrentCell(self.resourceWeeklyTotalTable.rowLabels.index(selected_user) if selected_user else 0, self.resourceWeeklyTotalTable.columnLabels.index(QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1).toString("dd/MM/yyyy")))
 
@@ -2785,19 +2718,90 @@ class ResourceTabWidget(QWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
+class TimesheetModel():
+    # @staticmethod
+    # def timesheet_exists(cursor, weekBegin):
+    #     try:
+    #         cursor.execute("SELECT * FROM Timesheet WHERE WeekBegin=?;", (weekBegin,)) #Get all records withe week beginning
+    #         return cursor.fetchone() is not None
+    #     except:
+    #         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    @staticmethod
+    def update_timesheet(conn, cursor, weekBegin):
+        try:
+            '''delete the timesheet entries if it exists, otherwise add new timesheet for the week'''
+            # cursor.execute("DELETE FROM Timesheet WHERE WeekBegin=?;", (weekBegin,))
+            # # timsheeet_id= TimesheetModel.get_timesheet(cursor, weekBegin)[0]
+            # cursor.execute("INSERT INTO Timesheet (WeekBegin) VALUES (?);", (weekBegin,))
+            # conn.commit()
+            # return cursor.execute("SELECT * FROM Timesheet WHERE WeekBegin=?;", (weekBegin,)).fetchone()[0]
+            timesheet= TimesheetModel.get_timesheet(cursor, weekBegin)
+            if timesheet is not None:
+                timesheet_id= timesheet[0]
+                cursor.execute("DELETE FROM TimesheetEntries WHERE TimesheetID=?;", (timesheet_id,))
+                conn.commit()
+                return timesheet_id
+            else:
+                cursor.execute("INSERT INTO Timesheet (WeekBegin) VALUES (?);", (weekBegin,))
+                conn.commit()
+                return TimesheetModel.get_timesheet(cursor, weekBegin)[0]
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def get_timesheet(cursor, weekBegin):
+        try:
+            cursor.execute("SELECT * FROM Timesheet WHERE WeekBegin=?;", (weekBegin,)) #Get all records withe week beginning
+            data= cursor.fetchone()
+            if data is not None:
+                return data#[0]
+            return None
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    @staticmethod
+    def add_timesheet_entries(conn, cursor, entries):
+        try:
+            cursor.executemany("INSERT INTO TimesheetEntries (TimesheetID, ProjectNo, ProjectName, Task, Mon, Tue, Wed, Thu, Fri) VALUES (?,?,?,?,?,?,?,?,?);", entries)
+            conn.commit()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    @staticmethod
+    def get_timesheet_entries(cursor, timesheet_id):
+        try:
+            cursor.execute("SELECT * FROM TimesheetEntries WHERE TimesheetID=?;", (timesheet_id,)) #Get all records withe week beginning
+            return cursor.fetchall()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    @staticmethod
+    def submit_timesheet(conn, cursor, timesheet_id):
+        try:
+            cursor.execute("UPDATE Timesheet SET Submitted=True WHERE ID=?;", (timesheet_id,))
+            conn.commit()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
 class TimeSheetWindow(QMainWindow):
     def __init__(self, adminbuttons):
         try:
             super().__init__()
+            # combined_time=time.time()
 
-            RefreshButton=ToolButton(" Refresh ", icon=refresh_icon, icon_width=25, icon_height=25,  min_height=30, buttonStyle=Qt.ToolButtonTextBesideIcon, clicked=self.refreshTimeSheet)
+            self.setStyleSheet("QComboBox{padding-left:20px; font-size:12pt; font-family:'Lato';}")
+            # RefreshButton=ToolButton(" Refresh ", icon=refresh_icon, icon_width=25, icon_height=25,  min_height=30, buttonStyle=Qt.ToolButtonTextBesideIcon, clicked=self.refreshTimeSheet)
 
             self.userBox=QComboBox()
-            self.userBox.addItems([emp for emp in RCDC_employees if emp not in ['OO', 'TS']])
-            self.userBox.setStyleSheet("QComboBox{padding-left:20px; font-size:12pt; font-family:'Lato';}")
-            self.userBox.setMinimumSize(150,40)
-            self.userBox.setMaximumSize(150,60)
-            self.userBox.currentTextChanged.connect(self.userChanged)#Connecting the change in the drop-down to its function
+            self.userBox.setStyleSheet("QComboBox{padding-left:15px; font-size:12pt; font-family:'Lato';}")
+            self.userBox.setMinimumSize(130,35)
+            self.userBox.setMaximumSize(130,44)
+            if this_userdata!=None:
+                thisuser=this_userdata["initial"]
+                self.userBox.addItems([emp for emp in RCDC_employees if emp not in ['OO', 'TS']])
+                self.userBox.setCurrentText(thisuser)
+                if thisuser not in ['VR', 'ST', 'TS', 'OO']:
+                    self.userBox.setEnabled(False)
+            self.userBox.currentTextChanged.connect(self.user_week_Changed)#Connecting the change in the drop-down to its function
             
             self.weekBeginBox=QComboBox()
             #add weeks starting from 2024 up to next 1 year from now
@@ -2806,19 +2810,21 @@ class TimeSheetWindow(QMainWindow):
             while start_date<end_date:
                 self.weekBeginBox.addItem(start_date.toString("dd/MM/yyyy"))
                 start_date=start_date.addDays(7)
-            self.weekBeginBox.setStyleSheet("QComboBox{padding-left:20px; font-size:12pt; font-family:'Lato';}")
+            self.weekBeginBox.setCurrentText(QDate.currentDate().addDays(-QDate.currentDate().dayOfWeek() + 1).toString("dd/MM/yyyy"))
+            self.weekBeginBox.setStyleSheet("QComboBox{padding-left:15px; font-size:11pt; font-family:'Lato';}")
             self.weekBeginBox.setMinimumHeight(40)
+            self.weekBeginBox.setMinimumWidth(150)
             
-            self.weekBeginBox.setMaximumSize(150,60)
-            self.weekBeginBox.currentTextChanged.connect(self.weekChanged)
+            # self.weekBeginBox.setMaximumSize(190,50)
+            self.weekBeginBox.currentTextChanged.connect(self.user_week_Changed)
             
             # self.weekBegin.currentTextChanged.connect(lambda: self.projectStatusChanged(self.userBox.checkedText))#Connecting the change in the drop-down to its function
 
             userLabel=QLabel("Employee:")
-            userLabel.setStyleSheet("font-size:12pt; color:rgba(0,0,0,0.9); font-family:'Lato';")
+            userLabel.setStyleSheet("font-size:11pt; color:rgba(0,0,0,0.9); font-weight:bold; font-family:'Lato';")
             userLabel.setAlignment(Qt.AlignCenter)
-            weekBeginLabel=QLabel("Week Beginning:")
-            weekBeginLabel.setStyleSheet("font-size:12pt; color:rgba(0,0,0,0.9); font-family:'Lato';")
+            weekBeginLabel=QLabel("Week:")
+            weekBeginLabel.setStyleSheet("font-size:11pt; color:rgba(0,0,0,0.9); font-weight:bold; font-family:'Lato';")
             weekBeginLabel.setAlignment(Qt.AlignCenter)
             user_weekBeginLayout=QHBoxLayout()
             # user_weekBeginLayout.addSpacing(10)
@@ -2833,59 +2839,77 @@ class TimeSheetWindow(QMainWindow):
             user_weekBeginLayout.addStretch(1)
             user_weekBeginLayout.setSpacing(0)
 
-
             self.timeSheetTable=TimeSheetTable()
-            saveChangesButton=ToolButton(" Save Changes ",min_height=35, styleSheet="font-size:11pt; font-family:'Lato';", clicked=self.saveChanges)
-            submitButton=ToolButton(" Submit ", icon=submit_icon, icon_width=25, icon_height=25,  min_height=42, buttonStyle=Qt.ToolButtonTextBesideIcon, styleSheet="font-size:12pt; font-family:'Lato';", clicked=self.submitTimeSheet)
+            self.saveChangesButton=ToolButton(" Save Changes ",min_height=35, styleSheet="font-size:11pt; font-family:'Lato';", clicked=self.saveChanges)
+            self.submitButton=ToolButton(" Submit ", icon=submit_icon, icon_width=25, icon_height=25,  min_height=42, buttonStyle=Qt.ToolButtonTextBesideIcon, styleSheet="font-size:12pt; font-family:'Lato';", clicked=self.submitTimesheet)
 
             save_submit_layout=QHBoxLayout()
             save_submit_layout.addStretch(1)
-            save_submit_layout.addWidget(saveChangesButton)
+            save_submit_layout.addWidget(self.saveChangesButton)
             save_submit_layout.addStretch(1)
-            save_submit_layout.addWidget(submitButton)
+            save_submit_layout.addWidget(self.submitButton)
             save_submit_layout.addStretch(1)
 
             self.OptionsLayout=QHBoxLayout()
-            self.OptionsLayout.addStretch(2)
-            self.OptionsLayout.addWidget(RefreshButton)  
+            # self.OptionsLayout.addStretch(2)
+            # self.OptionsLayout.addWidget(RefreshButton)  
             self.OptionsLayout.addStretch(2)
             self.OptionsLayout.addWidget(adminbuttons['managemenent'])            
             self.OptionsLayout.addStretch(1)
             self.OptionsLayout.addWidget(adminbuttons['userprofile'])         
             self.OptionsLayout.addStretch(1)
 
-            boardLayout=QGridLayout()
-            boardLayout.addLayout(user_weekBeginLayout, 0, 0, 1, 3)
 
-            boardLayout.addWidget(self.timeSheetTable, 1, 0, 1, 5)
-            boardLayout.addWidget(self.timeSheetTable.totalTable, 2, 0, 1, 5)
-            boardLayout.addLayout(save_submit_layout, 3, 0, 1, 5)
+            logo=QLabel()
+            logo.setPixmap(QPixmap(RCDC_icon2).scaledToHeight(50, Qt.SmoothTransformation))
+            timesheetLabel=QLabel("Timesheet")
+            timesheetLabel.setFont(QFont("Gill Sans MT", 12))
+            timesheetLabel.setAlignment(Qt.AlignCenter)
+            timesheetLabel.setMinimumWidth(300)
+            timesheetLabel.setMaximumHeight(30)
+            timesheetLabel.setStyleSheet("QLabel{background-color: #b0c454; color: white;}")
+            logoLayout=QHBoxLayout()
+            logoLayout.addSpacing(50)
+            logoLayout.addWidget(logo)
+            logoLayout.addStretch(1)
+            logoLayout.addWidget(timesheetLabel)
+            logoLayout.addStretch(3)
+
+            boardLayout=QGridLayout()
+            boardLayout.addLayout(user_weekBeginLayout, 2, 0, 1, 3)
+
+            boardLayout.addWidget(self.timeSheetTable, 3, 0, 1, 5)
+            boardLayout.addWidget(self.timeSheetTable.totalTable, 4, 0, 1, 5)
+            boardLayout.addLayout(save_submit_layout, 5, 0, 1, 5)
             boardLayout.setSpacing(0)
             # boardLayout.setHorizontalSpacing(0)
 
+
             split=QHBoxLayout()
+            split.addSpacing(50)
             split.addLayout(boardLayout,3)
             split.addStretch(1)
             # split.addWidget(QWidget())
             # split.setSizes([1000, 300])
             # start_time=time.time()
 
-            self.userChanged()
+            self.user_week_Changed()
             # MainLayout=QGridLayout()
             MainLayout=QVBoxLayout()
             MainLayout.addSpacing(10)
             MainLayout.addLayout(self.OptionsLayout)
             MainLayout.addSpacing(40)
+            MainLayout.addLayout(logoLayout)
+            MainLayout.addSpacing(20)
             MainLayout.addLayout(split,4)
             # MainLayout.addLayout(boardLayout,4)
             # MainLayout.addStretch(1)
-
 
             Page=QWidget()
             Page.setLayout(MainLayout)
             self.setCentralWidget(Page)
 
-
+            self.statusBar().setStyleSheet("background-color:lightgray; font-size:19px;")
             menuBar = self.menuBar()
             homeMenu = QAction(icon=QIcon(home_icon), parent= self)
             backMenu= QAction(icon=QIcon(back_icon), parent= self)
@@ -2894,86 +2918,91 @@ class TimeSheetWindow(QMainWindow):
             homeMenu.triggered.connect(lambda: widget.setCurrentWidget(initwindow))
             backMenu.triggered.connect(lambda: widget.setCurrentWidget(initwindow))
             QShortcut(QKeySequence('Backspace'),self).activated.connect(lambda: widget.setCurrentWidget(initwindow))
-            # print("Time taken to load timesheet window: ", time.time()-start_time)
-
+            # print("Time taken to load timesheet window: ", time.time()-combined_time)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    def userChanged(self):
-        try:
-            TimsheetModel.fetchUserTimesheet(self.userBox.currentText())
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def weekChanged(self):
+    def user_week_Changed(self):
         try:
             timesheetpath=users_jsons+"\\"+self.userBox.currentText()+"\\Timesheet.accdb"
+            enableEdits=False
             if path.exists(timesheetpath):
                 conn=pyodbc_connect(r'Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+timesheetpath+';')
                 cursor=conn.cursor()
-                timsheet_id=TimsheetModel.get_timesheet_id(cursor, self.weekBeginBox.currentText())
-                print(timsheet_id)
-                if timsheet_id:
-                    timesheetentries=TimsheetModel.get_timesheet_entries(cursor, timsheet_id)
-                    self.populateTimeSheetTable(timesheetentries)
-
+                timesheet=TimesheetModel.get_timesheet(cursor, self.weekBeginBox.currentText())
+                if timesheet: #if a timesheet has been created for the week previously
+                    timesheet_id, submitted=timesheet[0], timesheet[2]
+                    timesheetentries=TimesheetModel.get_timesheet_entries(cursor, timesheet_id)
+                    self.timeSheetTable.populateTable(timesheetentries)
+                    if submitted:
+                        # self.statusBar().showMessage("Timesheet submitted", 1000)
+                        enableEdits=False
+                    else:
+                        enableEdits=True
+                else:
+                    self.timeSheetTable.populateDefaultProjects(self.userBox.currentText(), self.weekBeginBox.currentText())
+                    enableEdits=True
+                cursor.close()
+                conn.close()
+            else:
+                self.timeSheetTable.populateDefaultProjects(self.userBox.currentText(), self.weekBeginBox.currentText())
+            self.timeSheetTable.setEditable(enableEdits)
+            self.saveChangesButton.setEnabled(enableEdits)
+            self.submitButton.setEnabled(enableEdits)
+            
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    def refreshTimeSheet(self):
-        try:
-            pass
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)           
+    # def refreshTimeSheet(self):
+    #     try:
+    #         self.user_week_Changed()
+    #     except:
+    #         MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)           
 
-
-    def populateTimeSheetTable(self, timesheetentries):
-        try:
-            # self.timeSheetTable.close_editors()
-            self.timeSheetTable.clearContents()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
-    def saveChanges(self):
+    def saveChanges(self, submit=False):
         try:
             weekBegin=self.weekBeginBox.currentText()
-            weekBeginQDate=QDate.fromString(weekBegin, "dd/MM/yyyy")
             user=self.userBox.currentText()
             timesheetpath=users_jsons+"\\"+user+"\\Timesheet.accdb"
             if path.exists(timesheetpath):
                 conn=pyodbc_connect(r'Driver={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+timesheetpath+';')
                 cursor=conn.cursor()
-                #fetch the timesheet id for the week
-                timesheet_id=TimsheetModel.add_timesheet_if_not_exists(conn, cursor, weekBegin)      
+                #fetch the timesheet id for the week 
+                timesheet_id=TimesheetModel.update_timesheet(conn, cursor, weekBegin)      
 
                 if timesheet_id:
                     timesheetentries=[]
                     #loop through the table and fetch the data to append to the timesheetentries list
                     for row in range(self.timeSheetTable.rowCount()):
-                        if self.timeSheetTable.cellWidget(row, 0).currentText()!="":
-                            projectno=self.timeSheetTable.cellWidget(row, 0).currentText()
-                            projectname=self.timeSheetTable.cellWidget(row, 1).currentText()
+                        if self.timeSheetTable.cellWidget(row, 0).text()!="" or self.timeSheetTable.cellWidget(row, 1).text()!="":
+                            projectno=self.timeSheetTable.cellWidget(row, 0).text()
+                            projectname=self.timeSheetTable.cellWidget(row, 1).text()
                             task=self.timeSheetTable.item(row, 2).text() if self.timeSheetTable.item(row, 2) and self.timeSheetTable.item(row,2).text() else None
-                            
-                            hoursFound=False #to check if any hours was found for the row (project)
-                            for col in range(3,10):
-                                if self.timeSheetTable.item(row, col) and self.timeSheetTable.item(row, col).text()!="":
-                                    hoursFound=True
-                                    hours=self.timeSheetTable.item(row, col).text()
-                                    actualdate=weekBeginQDate.addDays(col-3).toString("dd/MM/yyyy")
-                                    timesheetentries.append((timesheet_id,actualdate, projectno, projectname, task, hours))
-                            if not hoursFound: #if no hours was found for the row (project), add a row with no hours and date
-                                timesheetentries.append((timesheet_id,None, projectno, projectname, task, None))
+                            mon_fri_hours=[self.timeSheetTable.item(row, col).text() if self.timeSheetTable.item(row, col) and self.timeSheetTable.item(row, col).text()!="" else None for col in range(3,8)]
+                            timesheetentries.append((timesheet_id, projectno, projectname, task, mon_fri_hours[0], mon_fri_hours[1], mon_fri_hours[2], mon_fri_hours[3], mon_fri_hours[4]))
                     if timesheetentries:
-                        TimsheetModel.add_timesheet_entries(conn, cursor, timesheetentries)
+                        TimesheetModel.add_timesheet_entries(conn, cursor, timesheetentries)
+                    
+                    if submit:
+                        TimesheetModel.submit_timesheet(conn, cursor, timesheet_id)
+                        self.user_week_Changed()
+                        self.statusBar().showMessage("Timesheet submitted successfully", 5000)
+                    else:
+                        self.statusBar().showMessage("Changes saved", 5000)
+                cursor.close()
                 conn.close()
-                print("Saved")
+                
+            else:
+                MsgBox("Timesheet file '" +timesheetpath+"' does not exist", setWindowTitle="Error", setIcon = QMessageBox.Critical)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)           
     
-    def submitTimeSheet(self):
+    def submitTimesheet(self):
         try:
-            pass
+            qm = QMessageBox()
+            ret = qm.question(self, 'Submit Timesheet', "Are you sure you want to submit the timesheet?\n\nOnce submitted, the timesheet cannot be edited", qm.Yes | qm.No)
+            if ret == QMessageBox.Yes:
+                self.saveChanges(submit=True)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -2981,34 +3010,32 @@ class TimeSheetTable(QTableWidget):
     def __init__(self):
         try:
             super().__init__()
+            class NumericDelegate(QStyledItemDelegate):
+                def createEditor(self, parent, option, index):
+                    editor = QLineEdit(parent)
+                    col=index.column()  
+                    if col in range(3,8):
+                        editor.setValidator(QDoubleValidator())
+                    return editor
+            self.setItemDelegate(NumericDelegate()) #set the delegate for the table to be restricted to numbers only for the Mon to Fri columns
             # self.columnLabels=['Project No.', 'Project Name', 'Task', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Subtotal']
-            
             self.columnLabels=['Project No.', 'Project Name', 'Task', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN', 'Subtotal']
             self.setColumnCount(len(self.columnLabels))
             self.setHorizontalHeaderLabels(self.columnLabels)
             self.horizontalHeader().setStyleSheet("QHeaderView::section{ font-size:17px; font-family:'Lato';}")
+            self.cellChanged.connect(self.oncellChanged)
             #style the horizontal header of Mon to Sun
             # for i in range(3,10):
                 # self.horizontalHeaderItem(i).setForeground(QColor(0,0,0))
                 # self.horizontalHeaderItem(i).setBackground(QColor(255, 50, 50,240))
                 # self.horizontalHeaderItem(i).setForeground(QColor(176, 196, 84))
-
-            start_time = time.time()
-            print("Started initiating rows")
-            self.initiateRows()
-            print("Finished initiating rows in", time.time()-start_time)
-
+                
             # self.verticalHeader().setVisible(False)
             
-            self.setColumnWidth(self.columnLabels.index('Project No.'), 100)
-            self.setColumnWidth(self.columnLabels.index('Project Name'), 300)
-            self.setColumnWidth(self.columnLabels.index('Task'), 300)
-            for i in range(3,10): self.setColumnWidth(i, 60)
-            self.setColumnWidth(self.columnLabels.index('Subtotal'), 100)
-
-
             self.totalTable=QTableWidget(1, len(self.columnLabels))
-            self.totalTable.setItem(0, 1, QTableWidgetItem("TOTAL"))
+            for i in range(len(self.columnLabels)):
+                self.totalTable.setItem(0, i, QTableWidgetItem(""))
+            self.totalTable.item(0, 1).setText("TOTAL")
             self.totalTable.setVerticalHeaderLabels([""])
             self.setStyleSheet("QTableWidget{ border: none;}")
             self.totalTable.setStyleSheet("QTableWidget{font-size:17px; font-family:'Lato';font-weight:bold; border: none;}")
@@ -3017,19 +3044,24 @@ class TimeSheetTable(QTableWidget):
             self.totalTable.setSpan(0, 1, 1, 2)
             self.totalTable.horizontalHeader().setVisible(False)
             # self.totalTable.verticalHeader().setVisible(False)
+            self.setColumnWidth(self.columnLabels.index('Project No.'), 100)
             self.totalTable.setColumnWidth(self.columnLabels.index('Project No.'), 100)
+            self.setColumnWidth(self.columnLabels.index('Project Name'), 300)
             self.totalTable.setColumnWidth(self.columnLabels.index('Project Name'), 300)
+            self.setColumnWidth(self.columnLabels.index('Task'), 300)
             self.totalTable.setColumnWidth(self.columnLabels.index('Task'), 300)
-            for i in range(3,10): self.totalTable.setColumnWidth(i, 60)
+            for i in range(3,10): self.setColumnWidth(i, 75)
+            for i in range(3,10): self.totalTable.setColumnWidth(i, 75)
+            self.setColumnWidth(self.columnLabels.index('Subtotal'), 100)
             self.totalTable.setColumnWidth(self.columnLabels.index('Subtotal'), 100)
 
             self.verticalHeader().setFixedWidth(30)   
             self.totalTable.verticalHeader().setFixedWidth(30)   
+            
             # self.totalTable.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
             # self.totalTable.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
             # self.totalTable.verticalHeader().setStretchLastSection(True)
             # self.totalTable.verticalHeader().setResizeMode(QHeaderView.Stretch)
-
 
             #link their horizontal scrollbars
             #hide the scorllbar for the main table
@@ -3038,50 +3070,218 @@ class TimeSheetTable(QTableWidget):
             self.totalTable.horizontalScrollBar().valueChanged.connect(self.horizontalScrollBar().setValue)
             self.totalTable.setMaximumHeight(60)
 
-
-        
+            self.projectsDict={'':''}
+            self.projectsDict.update({proj.split(' - ',1)[0]:proj.split(' - ',1)[1] for proj in glob_Project3Code_dict})
+            self.projectNos=list(self.projectsDict.keys())
+            self.projectNames=list(self.projectsDict.values())
+             
+            self.initiateRows()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
     def initiateRows(self):
         try:
-            self.setUpdatesEnabled(False)
-
+            # self.setUpdatesEnabled(False)
+            self.cellChanged.disconnect()
             #Set up to 50 rows
             self.setRowCount(50)
-
-            #Set all of their Projct No. and Project Name to be comboboxes
-            # projectNos=[""]+[proj.split(' - ',1)[0] for proj in glob_Project3Code_dict]
-            # projectNames=[""]+[proj.split(' - ',1)[1] for proj in glob_Project3Code_dict]
-            self.projectsDict={'':''}
-            self.projectsDict.update({proj.split(' - ',1)[0]:proj.split(' - ',1)[1] for proj in glob_Project3Code_dict})
+            
+            subtotalindex=self.columnLabels.index('Subtotal')
             for row in range(50):
-                projectnoBox=QComboBox()
-                # projectnoBox.setStyleSheet("QComboBox{padding-left:10px; font-size:15px; font-family:'Lato';}")
-                projectnoBox.addItems(self.projectsDict.keys())
-                self.setCellWidget(row, 0, projectnoBox)
-                projectnoBox.currentTextChanged.connect(lambda text, r=row: self.projectNoChanged(text,r))
+                
+                projectnoEdit=QLineEdit()
+                projectNoCompleter=QCompleter(self.projectNos)
+                projectnoEdit.setCompleter(projectNoCompleter)
+                projectnoEdit.editingFinished.connect(lambda r=row: self.projectNoChanged(r))
+                projectnoEdit.completer().activated.connect(lambda text, r=row: self.projectNoChanged(r))
+                self.setCellWidget(row, 0, projectnoEdit)
 
-                projectnameBox=QComboBox()
-                # projectnameBox.setStyleSheet("QComboBox{padding-left:10px; font-size:15px; font-family:'Lato';}")
-                projectnameBox.addItems(self.projectsDict.values())
-                self.setCellWidget(row, 1, projectnameBox)
-                projectnameBox.currentTextChanged.connect(lambda text, r=row :self.projectNameChanged(text, r))
-        
-            self.setUpdatesEnabled(True)
+
+                projectnameEdit=QLineEdit()
+                projectNameCompleter=QCompleter(self.projectNames)
+                projectNameCompleter.setCaseSensitivity(Qt.CaseInsensitive)
+                projectNameCompleter.setFilterMode(Qt.MatchContains)
+                projectnameEdit.setCompleter(projectNameCompleter)
+                projectnameEdit.editingFinished.connect(lambda r=row: self.projectNameChanged(r))
+                projectnameEdit.completer().activated.connect(lambda text, r=row: self.projectNameChanged(r))
+                self.setCellWidget(row, 1, projectnameEdit)
+
+                for col in range(2, 10):
+                    self.setItem(row, col, NumericalTableWidgetItem(""))
+
+
+                subtotalitem=QTableWidgetItem()
+                #disable editing of the subtotal cell
+                subtotalitem.setFlags(subtotalitem.flags() & ~Qt.ItemIsEditable)
+                # subtotalitem.setFlags(Qt.NoItemFlags)
+                self.setItem(row, subtotalindex, subtotalitem)
+            #     projectnoBox=QComboBox()
+            #     # projectnoBox.setStyleSheet("QComboBox{padding-left:10px; font-size:15px; font-family:'Lato';}")
+            #     # projectnoBox.addItems(self.projectsDict.keys())
+            #     self.setCellWidget(row, 0, projectnoBox)
+            #     projectnoBox.currentTextChanged.connect(lambda text, r=row: self.projectNoChanged(text,r))
+
+            #     projectnameBox=QComboBox()
+            #     # projectnameBox.setStyleSheet("QComboBox{padding-left:10px; font-size:15px; font-family:'Lato';}")
+            #     # projectnameBox.addItems(self.projectsDict.values())
+            #     self.setCellWidget(row, 1, projectnameBox)
+            #     projectnameBox.currentTextChanged.connect(lambda text, r=row :self.projectNameChanged(text, r))
+            # # self.setUpdatesEnabled(True)
+            self.cellChanged.connect(self.oncellChanged)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    def projectNoChanged(self,no, row):
+    def projectNoChanged(self, row):
         try:
-            # print(no, row)
-            self.cellWidget(row, 1).setCurrentText(self.projectsDict[no])
+            # self.cellWidget(row, 1).setCurrentText(self.projectsDict[no])
+            no=self.cellWidget(row, 0).text()
+            if no in self.projectsDict:
+                self.cellWidget(row, 1).setText(self.projectsDict[no])
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    def projectNameChanged(self, name, row):
+    
+    def projectNameChanged(self, row):
         try:
-            # self.cellWidget(row, 0).setCurrentText(list(self.projectsDict.keys())[list(self.projectsDict.values()).index(name)])
-            self.cellWidget(row, 0).setCurrentText([no for no, n in self.projectsDict.items() if n==name][0])
+            # # self.cellWidget(row, 0).setCurrentText(list(self.projectsDict.keys())[list(self.projectsDict.values()).index(name)])
+            # self.cellWidget(row, 0).setCurrentText([no for no, n in self.projectsDict.items() if n==name][0])
+            name=self.cellWidget(row, 1).text()
+            for no, n in self.projectsDict.items():
+                if n==name:
+                    self.cellWidget(row, 0).setText(no)
+                    break
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def setEditable(self, editable):
+        try:
+            self.cellChanged.disconnect()
+            for row in range(self.rowCount()):
+                for col in range(2):
+                    if self.cellWidget(row, col):
+                        self.cellWidget(row, col).setEnabled(editable)
+                    
+                for col in range(2, 10):
+                    if self.item(row, col):
+                        if editable:
+                            self.item(row, col).setFlags(self.item(row, col).flags() | Qt.ItemIsEditable)
+                        else:
+                            self.item(row, col).setFlags(self.item(row, col).flags() & ~Qt.ItemIsEditable)
+            self.cellChanged.connect(self.oncellChanged)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def clearTable(self):
+        try:
+            for row in range(self.rowCount()):
+                for col in range(self.columnCount()):
+                    if self.cellWidget(row, col):
+                        self.cellWidget(row, col).setText("")
+                    elif self.item(row, col):
+                        self.item(row, col).setText("")
+            for col in range(3, 11):
+                self.totalTable.item(0, col).setText("")
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def populateDefaultProjects(self, user, weekBegin):
+        try:
+            self.cellChanged.disconnect()
+            self.clearTable()
+            projects=Resources_df[(Resources_df["RscFor"]==user) & (Resources_df["Week"]==datetime.strptime(weekBegin,'%d/%m/%Y'))].loc[:,["ProjectNo", "ProjectName"]].drop_duplicates().values
+            for row, proj in enumerate(projects):
+                if row>=self.rowCount(): break
+                self.cellWidget(row, 0).setText(proj[0])
+                self.cellWidget(row, 1).setText(proj[1])
+                
+            self.cellChanged.connect(self.oncellChanged)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def populateTable(self, timesheetentries):
+        try:
+            # self.setUpdatesEnabled(False)
+            self.cellChanged.disconnect()
+            self.clearTable()
+            # self.clearContents()
+            # self.initiateRows()
+            
+            #Populate the table with the timesheet entries
+            for row, entry in enumerate(timesheetentries):
+                self.cellWidget(row, self.columnLabels.index("Project No.")).setText(entry[2]) 
+                self.cellWidget(row, self.columnLabels.index("Project Name")).setText(entry[3])
+                self.item(row, self.columnLabels.index("Task")).setText(entry[4])
+                for col in range(3,8):
+                    hours=entry[col+2]
+                    if hours!=None:
+                        hours=round(hours, 1) if round(hours, 1)==round(hours, 2) else round(hours, 2)
+                        hours=hours if hours%1!=0 else int(hours)
+                        self.item(row, col).setText(f"{hours}")
+                self.updateSubTotal(row)
+            for col in range(3, 8): self.updateTotal(col)
+                # subtotal=entry[10]
+                # if subtotal!=None:
+                #     subtotal=round(subtotal, 1) if round(subtotal, 1)==round(subtotal, 2) else round(subtotal, 2)
+                #     subtotal=subtotal if subtotal%1!=0 else int(subtotal)
+                #     self.item(row, self.columnLabels.index("Subtotal")).setText(f"{subtotal}")
+            self.cellChanged.connect(self.oncellChanged)
+            # print("Table populated")
+            # self.setUpdatesEnabled(True)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def oncellChanged(self, row, col):
+        try:
+            if col in range(3, 8):
+                self.updateSubTotal(row)
+                self.updateTotal(col)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def updateSubTotal(self, row):
+        try:
+            rowSubtotal=0
+            for c in range(3, 8):
+                if self.item(row, c) and self.item(row, c).text()!="":
+                    rowSubtotal+=float(self.item(row, c).text())
+
+            if rowSubtotal!=0:
+                rowSubtotal=round(rowSubtotal, 1) if round(rowSubtotal, 1)==round(rowSubtotal, 2) else round(rowSubtotal, 2)
+                rowSubtotal=rowSubtotal if rowSubtotal%1!=0 else int(rowSubtotal)
+                self.item(row, self.columnLabels.index("Subtotal")).setText(str(rowSubtotal))
+            else:
+                self.item(row, self.columnLabels.index("Subtotal")).setText("")
+            self.updateOverallTotal()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)    
+
+    def updateTotal(self, col):
+        try:
+            columnTotal=0
+            for r in range(self.rowCount()):
+                if self.item(r, col) and self.item(r, col).text()!="":
+                    columnTotal+=float(self.item(r, col).text())
+            if columnTotal!=0:
+                columnTotal=round(columnTotal, 1) if round(columnTotal, 1)==round(columnTotal, 2) else round(columnTotal, 2)
+                columnTotal=columnTotal if columnTotal%1!=0 else int(columnTotal)
+                self.totalTable.item(0, col).setText(str(columnTotal))
+            else:
+                self.totalTable.item(0, col).setText("")
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def updateOverallTotal(self):
+        try:
+            overallTotal=0
+            subtotalindex=self.columnLabels.index('Subtotal')
+            for r in range(self.rowCount()):
+                if self.item(r, subtotalindex) and self.item(r, subtotalindex).text()!="":
+                    overallTotal+=float(self.item(r, subtotalindex).text())
+            if overallTotal!=0:
+                overallTotal=round(overallTotal, 1) if round(overallTotal, 1)==round(overallTotal, 2) else round(overallTotal, 2)
+                overallTotal=overallTotal if overallTotal%1!=0 else int(overallTotal)
+                self.totalTable.item(0, subtotalindex).setText(str(overallTotal))
+            else:
+                self.totalTable.item(0, subtotalindex).setText("")
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -4281,6 +4481,7 @@ class ProjectsWidget(QWidget):
             dialog.exec()        
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
     def refreshResources(self):
         try:
             global Resources_df
@@ -4324,7 +4525,7 @@ class Init_Window(QMainWindow):
             super().__init__()
           #Fetch json data
             updateJsonData()
-            fetchAllResources(includeHolidays=True)
+            fetchAllResources()
             global RCDC_employees #Employees initials
             RCDC_employees= [usr['initial'] for usr in json_data["employees"]]
             RCDC_employees.sort()
@@ -4705,6 +4906,62 @@ class NewProject_Dialog(QDialog):
                 self.projectLikelihoodBox.setEnabled(False)
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def populate_issue_sheet(self, issuesheetFile):
+        try:
+            #Populate the Issue sheet template
+            wb= openpyxl_load_workbook(filename=issuesheetFile, read_only=False)
+            self.sheet_name=wb['Sheet1']
+            self.sheet_name['B2']=self.projectNameEdit.text()
+            self.sheet_name['B3']=self.projectClientBox.currentText()
+            self.sheet_name['B4']=int(self.projectNoEdit.text())
+            wb.save(issuesheetFile)
+            wb.close()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def populate_rfi_tracker(self, rfitrackerFile):
+        try:
+            #Populate the RFI tracker template
+            wb= openpyxl_load_workbook(filename=rfitrackerFile, read_only=False)
+            self.sheet_name=wb['New']
+            self.sheet_name['I2']=self.projectNameEdit.text()
+            self.sheet_name['I3']= int(self.projectNoEdit.text())
+            #fill today's date
+            self.sheet_name['I5']= f"{date.today().strftime('%d/%m/%Y')}"
+            wb.save(rfitrackerFile)
+            wb.close()
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def populate_sitevisit_form(self, sitevisitForm):
+        try:
+            #Populate the site visit form template
+            if path.exists(sitevisitForm):
+                while True:
+                    try:
+                        doc=docx_Document(sitevisitForm) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
+                        break
+                    except docx_opc_exceptions_PackageNotFoundError:
+                        print("Please make sure '"+sitevisitForm+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Site Visit form open", setIcon = QMessageBox.Critical)
+                replacements= {
+                    'PROJECTNO': self.projectNoEdit.text(),
+                    'PROJECTNAME': self.projectNameEdit.text(),
+                }
+
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:  
+                            if cell.text in replacements:
+                                key=cell.text
+                                cell.text = f"{replacements[cell.text]}"
+                                replacements.pop(key)
+                            if not replacements:
+                                doc.save(sitevisitForm) # save the file
+                                return
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
     def funcOK(self):
         try:
             if self.projectNameEdit.text()!= '':
@@ -4738,7 +4995,6 @@ class NewProject_Dialog(QDialog):
                     rename(self.NewProject_Folder+ '\\9 Issues\\Document Issue Sheet - Template.xlsx',issuesheetFile )  #rename the issuesheet file
                     financetemplateFile= self.NewProject_Folder+ '\\1 Fees and Invoicing\\4 Finance Admin\\PROJECT FINANCE - ' + self.projectNameEdit.text() + '.xlsx'#new financeadmin file name
                     rename(self.NewProject_Folder+ '\\1 Fees and Invoicing\\4 Finance Admin\\PROJECT FINANCE TEMPLATE.xlsx',financetemplateFile)  #rename the financeadmin file
-                    
 
 
                     # teammembers= ', '.join(self.projectTeamBox.checkedTexts)
@@ -4757,25 +5013,15 @@ class NewProject_Dialog(QDialog):
                     cursor.close()
                     conn.close()
 
-                    #Populate the Issue sheet template
-                    wb= openpyxl_load_workbook(filename=issuesheetFile, read_only=False)
-                    self.sheet_name=wb['Sheet1']
-                    self.sheet_name['B2']=self.projectNameEdit.text()
-                    self.sheet_name['B3']=self.projectClientBox.currentText()
-                    self.sheet_name['B4']=int(self.projectNoEdit.text())
-                    wb.save(issuesheetFile)
-                    wb.close()
+                    #Populate the issue sheet
+                    self.populate_issue_sheet(issuesheetFile)
 
-                    #Populate the RFI Tracker
+                    #Populate the RFI tracker
                     rfitrackerFile= self.NewProject_Folder+ "\\11 Minutes and Agendas\\RFI Tracker.xlsx"
-                    wb= openpyxl_load_workbook(filename=rfitrackerFile, read_only=False)
-                    self.sheet_name=wb['Sheet1']
-                    self.sheet_name['D2']=self.projectNameEdit.text()
-                    self.sheet_name['D3']= int(self.projectNoEdit.text())
-                    #fill today's date
-                    self.sheet_name['D5']= f"{date.today().strftime('%d/%m/%Y')}"
-                    wb.save(rfitrackerFile)
-                    wb.close()
+                    self.populate_rfi_tracker(rfitrackerFile)
+
+                    sitevisitForm= self.NewProject_Folder+ "\\2 Project Admin\\1 H&S\\RCDC Site Visit Safety Form.docx"
+                    self.populate_sitevisit_form(sitevisitForm)
 
                     #Go back to the main window after refreshing with new project
                     newprojectdialog.close()
@@ -6159,8 +6405,10 @@ class Management_Window(QMainWindow):
     
     def RequestHolidayClicked(self):
         try:
+            startdate=self.StartDateEdit.date().toString("dd/MM/yyyy")
+            enddate=self.EndDateEdit.date().toString("dd/MM/yyyy")
             #if start date and end date are the same, it can't be both FirstDayPM and LastDayAM
-            if not (self.StartDateEdit.text()==self.EndDateEdit.text() and self.FirstDayPMCheck.isChecked() and self.LastDayAMCheck.isChecked()):
+            if not (startdate==enddate and self.FirstDayPMCheck.isChecked() and self.LastDayAMCheck.isChecked()):
                 # pass
                 #List to store half days
                 self.halfdaysList=list()
@@ -6172,7 +6420,7 @@ class Management_Window(QMainWindow):
                 if self.HolidayForBox.currentText()=="General":
                     if path.exists(management_json):
                         global json_data
-                        json_data["generalholidays"].append({"name":self.HolidayNameEdit.text(),"start":self.StartDateEdit.text(),"end":self.EndDateEdit.text(),"halfday":self.halfdaysList,"daysTaken":self.daysTaken, "for":self.HolidayForBox.currentText(), "status":"approved"})
+                        json_data["generalholidays"].append({"name":self.HolidayNameEdit.text(),"start":startdate,"end":enddate,"halfday":self.halfdaysList,"daysTaken":self.daysTaken, "for":self.HolidayForBox.currentText(), "status":"approved"})
                         with open(management_json,'w') as f:
                             json_dump({x: json_data[x] for x in json_data if x !="employees"}, f, indent=2)
                         self.isholAdded=True
@@ -6184,14 +6432,14 @@ class Management_Window(QMainWindow):
                         #if holiday being added is for current year
                         if int(self.yearBox.currentText())==date.today().year:
                             #add holiday with invoice record of carried holidays taken and annual holidays taken
-                            usrinfo['holidays'].append({"name":self.HolidayNameEdit.text(),"start":self.StartDateEdit.text(),"end":self.EndDateEdit.text(),"halfday":self.halfdaysList,"daysTaken":self.daysTaken,"for":self.HolidayForBox.currentText(),"invoice":{"carriedtaken":float(usrinfo["remainingcarriedholidays"])-self.remainingCarriedHolidays,"annualtaken":float(usrinfo["remainingannualholidays"])-self.remainingAnnualHolidays},"status":"unapproved"})
+                            usrinfo['holidays'].append({"name":self.HolidayNameEdit.text(),"start":startdate,"end":enddate,"halfday":self.halfdaysList,"daysTaken":self.daysTaken,"for":self.HolidayForBox.currentText(),"invoice":{"carriedtaken":float(usrinfo["remainingcarriedholidays"])-self.remainingCarriedHolidays,"annualtaken":float(usrinfo["remainingannualholidays"])-self.remainingAnnualHolidays},"status":"unapproved"})
                             #update user's remaining holidays
                             usrinfo["remainingannualholidays"]=self.remainingAnnualHolidays
                             usrinfo["remainingcarriedholidays"]=self.remainingCarriedHolidays
                         #if holiday is not for this current year
                         else:
                             #add holiday with invoice record of carried holidays taken as 0 and annual holidays taken as daysTaken for this holiday
-                            usrinfo['holidays'].append({"name":self.HolidayNameEdit.text(),"start":self.StartDateEdit.text(),"end":self.EndDateEdit.text(),"halfday":self.halfdaysList,"daysTaken":self.daysTaken,"for":self.HolidayForBox.currentText(),"invoice":{"carriedtaken":0,"annualtaken":self.daysTaken},"status":"unapproved"})
+                            usrinfo['holidays'].append({"name":self.HolidayNameEdit.text(),"start":startdate,"end":enddate,"halfday":self.halfdaysList,"daysTaken":self.daysTaken,"for":self.HolidayForBox.currentText(),"invoice":{"carriedtaken":0,"annualtaken":self.daysTaken},"status":"unapproved"})
                             #if user hasn't booked any holiday in the selected year before, add year to comingyearsholidaystaken dict with 0 as value
                             if self.yearBox.currentText() not in usrinfo["comingyearsholidaystaken"]:
                                 usrinfo["comingyearsholidaystaken"][self.yearBox.currentText()]=0
@@ -6384,6 +6632,9 @@ class Add_Edit_User_Dialog(QDialog):
                                     #make actions folder for user
                                     mkdir(users_jsons+"\\"+self.userInitialEdit.text())
                                     mkdir(users_jsons+"\\"+self.userInitialEdit.text()+"\\Needs approval")
+                                    #copy timesheet access database to user's folder
+                                    if path.exists(users_jsons+"\\Timesheet.accdb"):
+                                        shutil_copyfile(users_jsons+"\\Timesheet.accdb",users_jsons+"\\"+self.userInitialEdit.text()+"\\Timesheet.accdb")
                                     refreshMainWindow()
                                     # widget.removeWidget(managementwindow)
                                     # managementwindow.__init__()
@@ -13969,7 +14220,7 @@ class ProjectResourceWindow(QMainWindow):
             menuBar.addAction(homeMenu)
             homeMenu.triggered.connect(self.homeAction)
             backMenu.triggered.connect(self.backAction)
-            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
+            # QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
             menuBar = self.menuBar()
@@ -13979,7 +14230,7 @@ class ProjectResourceWindow(QMainWindow):
             menuBar.addAction(homeMenu)
             homeMenu.triggered.connect(self.homeAction)
             backMenu.triggered.connect(self.backAction)
-            QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
+            # QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
     
     def autoCompletefromBid(self):
         try:
@@ -14775,20 +15026,6 @@ class NumericalTableWidgetItem(QTableWidgetItem):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-class CustomDelegate(QStyledItemDelegate):
-    def paint(self, painter, option, index):
-        if option.state & QStyle.State_Selected:
-            # Preserve the original background color or set a default color
-            brush = index.data(Qt.BackgroundRole)
-            if brush is None:
-                brush = QBrush(QColor(208,236,252,150))  # Set a default color if no background is set
-            painter.save()
-            painter.fillRect(option.rect, brush)
-            painter.restore()
-            option.state &= ~QStyle.State_Selected
-
-        super().paint(painter, option, index)
-
 if __name__ == "__main__":
         # import sys
         # # Handle high resolution displays:
@@ -14841,7 +15078,7 @@ if __name__ == "__main__":
             from openpyxl.styles import Alignment as openpyxl_styles_Alignment
             # from csv import DictWriter as csv_DictWriter, DictReader as csv_DictReader
             # from csv import reader as csv_reader, writer as csv_writer
-            from pandas import DataFrame as pd_DataFrame, concat as pd_concat, to_datetime as pd_to_datetime, ExcelFile as pd_ExcelFile, read_excel as pd_read_excel, NaT as pd_NaT, read_csv as pd_read_csv
+            from pandas import DataFrame as pd_DataFrame, concat as pd_concat, to_datetime as pd_to_datetime, ExcelFile as pd_ExcelFile, read_excel as pd_read_excel, NaT as pd_NaT, read_csv as pd_read_csv, DateOffset as pd_DateOffset, merge as pd_merge, date_range as pd_date_range
             # import pandas as pd
             # import matplotlib.pyplot as plt
             # from matplotlib.patches import Patch
@@ -14952,6 +15189,7 @@ if __name__ == "__main__":
             submit_icon= userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\submit_icon.ico"
 
             RCDC_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\logo no background.ico"
+            RCDC_icon2=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\RCDC-logo.ico"
             tickdone_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\tick done.ico"
             tickdone_icon2=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\tick done2.ico"
             blankimage_icon=userpath + r"\Ruane Construction Design and Consultancy\RCDC - Documents\Projects\00 - Programming Codes\WoW\DO NOT TOUCH\blank-image.ico"
