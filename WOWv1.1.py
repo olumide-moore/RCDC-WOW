@@ -2129,7 +2129,9 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                         user_week_hol=holidays[(holidays['week_start']==datetime.strptime(week,'%d/%m/%Y')) & (holidays['user'].isin([user,'General']))]
                         if not user_week_hol.empty:
                             j = self.columnLabels.index(week)
-                            self.setItem(i,j,NumericalTableWidgetItem(f"{user_week_hol['total_days'].sum()*7.5}"))
+                            hours=user_week_hol['total_days'].sum()*7.5
+                            hours= int(hours) if hours == int(hours) else round(hours, 2) #if hours is a whole number, convert to int
+                            self.setItem(i,j,NumericalTableWidgetItem(f"{hours}"))
                     i+=1
 
                 for index in unique_index:
@@ -2628,21 +2630,21 @@ class ResourceTabWidget(QWidget):
                 return weeks
 
             def expand_days_across_weeks(holidays):
-                holidays_df= pd_DataFrame(holidays, columns=["name", "for","daysTaken","start","end"])
+                holidays_df= pd_DataFrame(holidays, columns=["name", "for","daysTaken","start","end","halfday"])
                 holidays_df["start"]= pd_to_datetime(holidays_df["start"], dayfirst=True)
                 holidays_df["end"]= pd_to_datetime(holidays_df["end"], dayfirst=True)
                 # Expand user holidays into weekly data
                 expanded_holidays = []
                 for _, row in holidays_df.iterrows():
                     start_date = row['start']
-                    end_date = row['end']
                     days_taken = row['daysTaken']
-                    weeks = get_weeks_range(start_date, end_date)
+                    weeks = get_weeks_range(start_date, row['end'])
                     for week_Mon in weeks:
                         week_Fri = week_Mon + pd_DateOffset(days=4)  # Friday
                         if week_Mon == weeks[0]:
                             #For the first week, the days taken is the minimum between the days taken and the number of days left in the week
-                            days = min(days_taken, (week_Fri - start_date).days + 1)
+
+                            days = min(days_taken, (week_Fri - start_date).days + 1) if 'FirstDayPM' not in row['halfday'] else min(days_taken, (week_Fri - start_date).days + 0.5)
                         elif week_Mon == weeks[-1]:
                             days = days_taken
                         else:
@@ -2656,8 +2658,8 @@ class ResourceTabWidget(QWidget):
             
             userHolidays=[]
             for usr in json_data["employees"]:
-                userHolidays.extend(list(map(lambda x: (x['name'], x['for'], x['daysTaken'],x['start'], x['end']), usr['holidays'])))
-
+                userHolidays.extend(list(map(lambda x: (x['name'], x['for'], x['daysTaken'],x['start'], x['end'], x['halfday']), usr['holidays'])))
+                # print(list(map(lambda x: (x['for'], x['halfday']), usr['holidays'])))
             user_weeks_df = expand_days_across_weeks(userHolidays)
             general_weeks_df = expand_days_across_weeks(json_data["generalholidays"])
 
@@ -4941,10 +4943,13 @@ class NewProject_Dialog(QDialog):
             if path.exists(sitevisitForm):
                 while True:
                     try:
-                        doc=docx_Document(sitevisitForm) #Report Temp is the report template. The path is set at the bottom under if __init__==__main__ statement
+                        doc=docx_Document(sitevisitForm)
+                        #adjust font
+                        font=doc.styles['Normal'].font
+                        font.name='Lato'
                         break
                     except docx_opc_exceptions_PackageNotFoundError:
-                        print("Please make sure '"+sitevisitForm+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Site Visit form open", setIcon = QMessageBox.Critical)
+                        MsgBox("Please make sure '"+sitevisitForm+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Site Visit form open", setIcon = QMessageBox.Critical)
                 replacements= {
                     'PROJECTNO': self.projectNoEdit.text(),
                     'PROJECTNAME': self.projectNameEdit.text(),
@@ -4960,6 +4965,45 @@ class NewProject_Dialog(QDialog):
                             if not replacements:
                                 doc.save(sitevisitForm) # save the file
                                 return
+                doc.save(sitevisitForm) # save the file
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def populate_project_brief(self, projectbrief):
+        try:
+            #Populate the site visit form template
+            if path.exists(projectbrief):
+                while True:
+                    try:
+                        doc=docx_Document(projectbrief)
+                        #adjust font
+                        font=doc.styles['Normal'].font
+                        font.name='Lato'
+                        break
+                    except docx_opc_exceptions_PackageNotFoundError:
+                        MsgBox("Please make sure '"+projectbrief+"' isn't open\n\nClick OK after it is closed",setWindowTitle="Project Brief open", setIcon = QMessageBox.Critical)
+                replacements= {
+                    'PROJECTNO': self.projectNoEdit.text(),
+                    'PROJECTNAME': self.projectNameEdit.text(),
+                    'PROJECTCLIENT': self.projectClientBox.currentText(),
+                    'PROJECTCODE': self.Letter3CodeEdit.text(),
+                    'PROJECTDIRECTOR': self.projectDirectorBox.currentText(),
+                    'PROJECTLEAD': self.projectLeadBox.currentText(),
+                    'PROJECTSECTOR': self.projectSectorBox.currentText(),
+                    'PROJECTFEES': self.projectFeesBox.text()
+                }
+
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:  
+                            if cell.text in replacements:
+                                key=cell.text
+                                cell.text = f"{replacements[cell.text]}"
+                                replacements.pop(key)
+                            if not replacements:
+                                doc.save(projectbrief) # save the file
+                                return
+                doc.save(projectbrief)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -5023,6 +5067,9 @@ class NewProject_Dialog(QDialog):
 
                     sitevisitForm= self.NewProject_Folder+ "\\2 Project Admin\\1 H&S\\RCDC Site Visit Safety Form.docx"
                     self.populate_sitevisit_form(sitevisitForm)
+
+                    projectbrief= self.NewProject_Folder+ "\\2 Project Admin\\Project Brief.docx"
+                    self.populate_project_brief(projectbrief)
 
                     #Go back to the main window after refreshing with new project
                     newprojectdialog.close()
