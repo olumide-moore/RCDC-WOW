@@ -32,15 +32,16 @@ except ImportError:
 #importing PyQt5 libraries
 from copy import deepcopy as copy_deepcopy
 from os import mkdir,makedirs, rename, listdir, path, startfile, remove, environ, walk #, getlogin
+from collections import defaultdict
 
 from PyQt5.QtWidgets import QTabWidget,  QDateEdit, QInputDialog, QRadioButton, QFileDialog, QDoubleSpinBox, QListView, QListWidgetItem, QShortcut,  QTextEdit, QWidget, QMainWindow, QApplication, QScrollArea, QAction, QLineEdit,\
     QStackedWidget, QTableWidget, QCalendarWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QMenu, QTableWidgetItem,QHeaderView, \
             QAbstractItemView, QLabel, QDialogButtonBox, QListWidget, QCheckBox, QFrame, QPushButton, QToolButton, QComboBox, QMessageBox, \
                 QDialog, QFormLayout, QGroupBox, QWhatsThis, QSizePolicy, QAbstractScrollArea, QTimeEdit, QSplitter, QStyle, QStyledItemDelegate, QCompleter, QAbstractItemDelegate
-from PyQt5.QtGui import QDragEnterEvent, QIcon, QKeySequence, QPixmap, QFont, QColor, QDropEvent, QRegExpValidator, QDoubleValidator, QFontDatabase, QCursor, QBrush
+from PyQt5.QtGui import QContextMenuEvent, QDragEnterEvent, QIcon, QKeySequence, QPixmap, QFont, QColor, QDropEvent, QRegExpValidator, QDoubleValidator, QFontDatabase, QCursor, QBrush
 from PyQt5.Qt import QRect
 # from PyQt5 import QtWebEngineWidgets
-from PyQt5.QtCore import QEvent, QItemSelection, QItemSelectionModel, Qt, QSize, QDate, QTimer, QRegExp, QTime, QDir
+from PyQt5.QtCore import QAbstractItemModel, QEvent, QItemSelection, QItemSelectionModel, QModelIndex, Qt, QSize, QDate, QTimer, QRegExp, QTime, QDir, QCoreApplication
 #import QStyle
 
 from fitz.fitz import TEXT_ALIGN_CENTER, TEXT_ALIGN_LEFT, TEXT_ALIGN_RIGHT
@@ -300,23 +301,35 @@ def copyFolder(src, dst):
 
 def refreshMainWindow():
     try:
-        projectfilterOptions= initwindow.projectsWidget.projectfilterOptions.checkedIndices
-        currenttab=initwindow.Page.currentIndex()
-        projecttableselection=[i.row() for i in projectsTable.selectionModel().selectedRows()] #selected project in table
+        projectStatusBoxIndices= initwindow.projectsWidget.projectStatusBox.checkedIndices #Get the checked project status filter options
+        currenttab=initwindow.Page.currentIndex() #Get the current tab
+        projectselectedrows=[i.row() for i in projectsTable.selectionModel().selectedRows()] #selected roww in project table
         projectinfocurrenttab=initwindow.projectsWidget.projectInfoTabWidget.currentIndex() #project info tabs current tab
         widget.removeWidget(initwindow)
         initwindow.__init__() #re-initialise the initwindow
 
-        for i in projectfilterOptions:
-            initwindow.projectsWidget.projectfilterOptions.checkIndex(i) #re-check the project filter options
-        if len(projectfilterOptions)>= initwindow.projectsWidget.projectfilterOptions.count()-2:
-            initwindow.projectsWidget.projectfilterOptions.checkIndex(1) #if all options are checked, check the all option
-        if initwindow.projectsWidget.projectfilterOptions.findText("Live") not in projectfilterOptions: #this is because the live checkbox is checked by default in initwindow
-            initwindow.projectsWidget.projectfilterOptions.uncheckIndex(initwindow.projectsWidget.projectfilterOptions.findText("Live"))#uncheck the live option if it was unchecked before
-        initwindow.projectsWidget.projectfilterOptions.setItemText(0,', '.join(initwindow.projectsWidget.projectfilterOptions.checkedTexts)) #set the text of the filter options to the checked options
-        initwindow.Page.setCurrentIndex(currenttab)
-        if len(projecttableselection)>0:
-            projectsTable.selectRow(projecttableselection[0])
+        for i in projectStatusBoxIndices:
+            initwindow.projectsWidget.projectStatusBox.checkIndex(i) #re-check the project status filter options
+        if len(projectStatusBoxIndices)>= initwindow.projectsWidget.projectStatusBox.count()-2:
+            initwindow.projectsWidget.projectStatusBox.checkIndex(1) #if all options are checked, check the 'All' option
+        if initwindow.projectsWidget.projectStatusBox.findText("Live") not in projectStatusBoxIndices: #this is because the live checkbox is checked by default in initwindow
+            initwindow.projectsWidget.projectStatusBox.uncheckIndex(initwindow.projectsWidget.projectStatusBox.findText("Live"))#uncheck the live option if it was unchecked before reinitalising
+        initwindow.projectsWidget.projectStatusBox.setItemText(0,', '.join(initwindow.projectsWidget.projectStatusBox.checkedTexts)) #set the  display text of the filter options box to the checked options
+        initwindow.Page.setCurrentIndex(currenttab) #change the tab to the tab before reinitialising
+        if projectselectedrows:
+            r=projectselectedrows[0]
+            rowCount=projectsTable.rowCount()
+            i=0
+            while (r+i)<rowCount or (r-i) >=0:
+                if (r+i)<rowCount and not projectsTable.isRowHidden(r+i):
+                    r+=i
+                    break
+                elif (r-i)>=0 and not projectsTable.isRowHidden(r-i):
+                    r-=i
+                    break
+                i+=1
+
+            projectsTable.selectRow(r)
             initwindow.projectsWidget.projectInfoTabWidget.setCurrentIndex(projectinfocurrenttab)
         widget.addWidget(initwindow) 
     except :
@@ -591,14 +604,23 @@ class Admin_Dialog(QDialog):
                     # if event.type()==QEvent.MouseButtonDblClick and self.LogosList.isHidden():
                     #if you drag a logo and drop it on the DropLogo Label, the logo is shown on the Label
                     if event.__class__== QDragEnterEvent:
+                        if event.mimeData().hasUrls() and event.mimeData().urls()[0].isLocalFile():#if the item is a file
+                            event.accept()
+                            return True
                         #if an item is dragged 
-                        if len(self.LogosList.selectedItems())==1 and self.LogosList.selectedItems()[0].toolTip() not in [None,''] and path.exists(self.LogosList.selectedItems()[0].toolTip()):
-                                event.accept()
-                                event.mimeData().setText(self.LogosList.selectedItems()[0].toolTip())
-                                return True
+                        elif len(self.LogosList.selectedItems())==1 and self.LogosList.selectedItems()[0].toolTip() not in [None,''] and path.exists(self.LogosList.selectedItems()[0].toolTip()):
+                            event.accept()
+                            event.mimeData().setText(self.LogosList.selectedItems()[0].toolTip())
+                            return True
+                        
                     elif event.__class__== QDropEvent: 
-                        if event.mimeData().hasText():
+                        if event.mimeData().hasUrls() and event.mimeData().urls()[0].isLocalFile():#if the item is a file
+                            filepath= event.mimeData().urls()[0].toLocalFile()
+                        elif event.mimeData().hasText():
                             filepath=event.mimeData().text()
+                        else:
+                            return False
+                        if filepath and filepath.endswith(".png") or filepath.endswith(".jfif") or filepath.endswith(".jpg") or filepath.endswith("jpeg"):
                             self.DropLogolabel.setPixmap(QPixmap(filepath).scaled(200,200))#Put image in logo label
                             self.DropLogolabel.setToolTip(filepath) # Set the label tool tip to image fullpath
                             self.logoupdated=True
@@ -785,7 +807,6 @@ class Admin_Dialog(QDialog):
 
                 refreshMainWindow()
                 widget.setCurrentWidget(initwindow)
-                projectsTable.selectRow(self.this_projectindex)
                 # widget.removeWidget(projectmenuwindow)
                 # projectmenuwindow.__init__()
                 # widget.addWidget(projectmenuwindow) 
@@ -798,6 +819,86 @@ class Admin_Dialog(QDialog):
                 self.close()
                 # MsgBox("No changes noticed\n\nNote: Updating a logo doesn't require you to click the OK button",setWindowTitle="   ", setIcon = QMessageBox.Information)
         except :
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+class TableWidget(QTableWidget):
+    def __init__(self, rows=0, columns=0, allowPaste=False, allowEdit=False):
+        super().__init__(rows, columns)
+        self.setRowCount(rows)
+        self.setColumnCount(columns)
+        # self.setFocusPolicy(Qt.NoFocus) #This is to avoid the blue border when the table is clicked
+        self.setStyleSheet("QTableWidget::item:selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8); border-bottom: 1px solid #eeeeee;}")
+        
+        if not allowEdit: self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+
+        self.columnLabels = []
+
+
+        self.defaultActions = []
+        copyAction = QAction("Copy", self)
+        copyAction.setShortcut(QKeySequence.Copy)
+        copyAction.setShortcutContext(Qt.WidgetShortcut)
+        copyAction.triggered.connect(self.copyItems)
+        self.addAction(copyAction)
+        self.defaultActions.append(copyAction)
+
+        if allowPaste:
+            pasteAction = QAction("Paste", self)
+            pasteAction.setShortcut(QKeySequence.Paste)
+            pasteAction.setShortcutContext(Qt.WidgetShortcut)
+            pasteAction.triggered.connect(self.pasteItems)
+            self.addAction(pasteAction)
+            self.defaultActions.append(pasteAction)
+
+    def copyItems(self):
+        try:
+            selection = self.selectedRanges()
+            # print(selection)
+            if selection:
+                # selected_range = selection[0]
+                copy_data = ""
+                for i in range(selection[0].topRow(), selection[-1].bottomRow() + 1):
+                    row_data = []
+                    for j in range(selection[0].leftColumn(), selection[-1].rightColumn() + 1):
+                        item = self.item(i, j)
+                        row_data.append(item.text() if item else '')
+                    copy_data += '\t'.join(row_data) + '\n'
+                QCoreApplication.instance().clipboard().setText(copy_data)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def pasteItems(self):
+        try:
+            clipboard = QCoreApplication.instance().clipboard()
+            copied_data = clipboard.text().strip()
+            copied_rows = [row.split('\t') for row in copied_data.split('\n')]
+
+            if not copied_rows: return
+
+            selection = self.selectedRanges()
+            if selection:
+                selected_range = selection[0]
+                top_row, left_col = selected_range.topRow(), selected_range.leftColumn()
+                selected_row_count, selected_col_count = selected_range.rowCount(), selected_range.columnCount()
+                copied_row_count, copied_col_count = len(copied_rows), len(copied_rows[0])
+                
+                for i in range(max(selected_row_count, copied_row_count)): #Loop through the maximum of selected and copied row count
+                    row = top_row + i
+                    for j in range(max(selected_col_count, copied_col_count)): #Loop through the maximum of selected and copied column count
+                        col = left_col + j
+                        text = copied_rows[i % copied_row_count][j % copied_col_count]
+                        if (self.__class__.__name__=="TimeSheetTable" and col in range(3,10)) or self.__class__.__name__=="ResourceWeeklyBreakdownTable":
+                            if not is_float(text):
+                                continue
+                        if (row < self.rowCount()) and (col < self.columnCount()):
+                            #if the cell is editable, paste the text (this is useful for the subtotal in the timesheet)
+                            
+                            if self.item(row, col):
+                                if self.item(row, col).flags() & Qt.ItemIsEditable:
+                                    self.item(row, col).setText(text)
+                            else:
+                                self.setItem(row, col, QTableWidgetItem(text))
+        except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
 ## Old Resource Manager
@@ -1905,7 +2006,7 @@ class Admin_Dialog(QDialog):
     #         except:
     #             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-class ResourceWeeklyTotalTable(QTableWidget):
+class ResourceWeeklyTotalTable(TableWidget):
     def __init__(self):
         try:
             super().__init__()
@@ -1925,7 +2026,10 @@ class ResourceWeeklyTotalTable(QTableWidget):
                     super().paint(painter, option, index)
 
 
-            self.rowLabels=[emp for emp in RCDC_employees if emp not in ['OO', 'TS']]
+            if this_userdata is not None and this_userdata["initial"] =='OO':
+                self.rowLabels=[emp for emp in RCDC_employees]
+            else:
+                self.rowLabels=[emp for emp in RCDC_employees if emp not in ['OO', 'TS']]
             self.columnLabels=[]
             self.setRowCount(len(self.rowLabels))
             self.setVerticalHeaderLabels(self.rowLabels)
@@ -1940,7 +2044,6 @@ class ResourceWeeklyTotalTable(QTableWidget):
             self.verticalHeader().setFixedWidth(300)
             self.verticalHeader().setDefaultAlignment(Qt.AlignCenter)
             # self.setStyleSheet("""QHeaderView{font-size:13px;}QTableWidget{ border:1px; font-family:"Lato"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8);border-bottom: 1px solid #eeeeee;}""")
-            self.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
             #set columns width as unadjustable
             self.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
@@ -1953,7 +2056,7 @@ class ResourceWeeklyTotalTable(QTableWidget):
             delegate= CustomDelegate()
             self.setItemDelegate(delegate)
 
-            self.installEventFilter(self)
+            # self.installEventFilter(self)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
@@ -2033,13 +2136,30 @@ class ResourceWeeklyTotalTable(QTableWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-class ResourceWeeklyBreakdownTable(QTableWidget):
-    def __init__(self, forUsers=False, oncomplete=None, includeNewResourceButton=False, includeEditResourceButton=False):
+class ResourceWeeklyBreakdownTable(TableWidget):
+    def __init__(self, forUsers=False, oncomplete=None, includeNewResourceButton=False):
         try:
-            super().__init__()
+            super().__init__(allowPaste=True, allowEdit=True)
+            class DoubleValidator(QDoubleValidator):
+                def validate(self, input, pos):
+                    if input == "":
+                        return QDoubleValidator.Acceptable, input, pos
+                    return super().validate(input, pos)
+                
+            class CustomDelegate(QStyledItemDelegate):
+                def createEditor(self, parent, option, index):
+                    # editor=QLineEdit(parent)
+                    # editor.setValidator(DoubleValidator())
+                    # return editor
+                    editor = QLineEdit(parent)
+                    # validator.setNotation(DoubleValidator.StandardNotation)
+                    # validator.setBottom(0)  # Example: setting a lower limit of 0, adjust as needed
+                    editor.setValidator(DoubleValidator())
+                    return editor
+            self.setItemDelegate(CustomDelegate())
             self.forUsers=forUsers
             self.oncomplete=oncomplete
-            self.isEditting=False
+            self.trackChanges=True
 
             if self.forUsers: self.currentUser=None
                                 # QHeaderView::section{ border:1px solid rgba(176, 196, 84, 0.9); padding-left:10px; }                               
@@ -2048,7 +2168,6 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                                 QHeaderView::section:horizontal{ border:1px solid rgba(176, 196, 84, 0.9); padding-left:10px; }                               
                                 QTableWidget{ border:1px; font-family:"Lato"; border-style:outset; font-size:14px;} QTableWidget::item{min-height:40px;} QTableWidget::item::selected{background: rgba(208,236,252,0.5); color:black;}""")
 
-            self.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
             #set columns width as unadjustable
             self.horizontalHeader().setSectionResizeMode(QHeaderView.Fixed)
@@ -2057,11 +2176,16 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
             self.columnLabels=[]
 
             self.input_buffer = ""
-            self.edited_cells = dict()
-            self.resources_to_save = dict()
+
+            self.resources_to_save = defaultdict(lambda: defaultdict(lambda: {'Hours':0.0}))
+            self.opened_cells = list()
             self.copied_cells = list()
             self.cellPressed.connect(self.on_cell_pressed)
             self.cellDoubleClicked.connect(self.on_cell_double_clicked)
+
+            # self.cellChanged.connect(lambda row, col: self.on_cell_changed(row, col))
+            # self.cellChanged.connect(lambda row, col: self.on_cell_changed(self.verticalHeaderItem(row).data(257), self.columnLabels[col], self.item(row, col).text()))
+            self.cellChanged.connect(self.on_cell_changed)
 
             # self.header = CustomComboBoxHeader()
             # self.setVerticalHeader(self.header)
@@ -2070,19 +2194,21 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
 
             #Button to add new resource
             if includeNewResourceButton:
-                self.NewResourceButton=ToolButton(" New Resource ", icon=newaction_icon, icon_width=25, icon_height=25,  min_height=30, buttonStyle=Qt.ToolButtonTextBesideIcon)
+                self.NewResourceButton=ToolButton(" New Resource ", icon=newaction_icon, icon_width=25, icon_height=25,  min_height=35, buttonStyle=Qt.ToolButtonTextBesideIcon, styleSheet="font-size:15px;")
 
-            #Edit resource button
-            if includeEditResourceButton:
-                self.EditResourceButton=ToolButton(" Edit Resource ", min_height=25, clicked=self.editResourceClicked)
-                self.CancelEditButton=ToolButton(" Cancel Edit ", min_height=30, clicked=self.cancelEditClicked)
-                self.CancelEditButton.setVisible(False)
+            #Save resource button
+            self.SaveResourceButton=ToolButton(" Save Changes ", min_height=35, clicked=self.saveResourceClicked, styleSheet="font-size:15px;")
+            self.SaveResourceButton.setEnabled(False)
+            QShortcut(QKeySequence("Ctrl+S"), self, self.saveResourceClicked)
+            self.CancelEditButton=ToolButton(" Cancel Edit ", min_height=35, clicked=self.cancelEditClicked, styleSheet="font-size:15px;")
+            self.CancelEditButton.setVisible(False)
 
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def updateHorizontalHeaders(self, weeksLabels):
         try:
+            '''Update the horizontal headers of the table with the weeksLabels provided and scroll to the current week'''
             if weeksLabels:
                 self.setColumnCount(0)
                 self.setColumnCount(len(weeksLabels))
@@ -2107,6 +2233,7 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
             if self.forUsers:
                 if user in [None, self.currentUser]: return
                 self.currentUser=user
+            self.trackChanges=False
             self.setRowCount(0)
             # print('here')
             if resources is not None and type(resources) == pd_DataFrame and not resources.empty:
@@ -2120,7 +2247,6 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                 self.setRowCount(len(unique_index)+1) if (holidays is not None and not holidays.empty) else self.setRowCount(len(unique_index))
                 #set row labels based on the unique index
                 i=0
-
 
                 #populate the holidays for the user for the weeks
                 if holidays is not None and not holidays.empty:
@@ -2152,8 +2278,6 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                     i+=1
 
 
-
-
                 #After populating, it is possible that some cells were previously edited and are not saved
                 #fill the edited cells with the previously edited values
                 for row in range(self.rowCount()):
@@ -2161,36 +2285,54 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                         for week in self.resources_to_save[self.verticalHeaderItem(row).data(257)]:
                             j = self.columnLabels.index(week)
                             hours=self.resources_to_save[self.verticalHeaderItem(row).data(257)][week]['Hours']
-                            hours= int(hours) if hours == int(hours) else round(hours, 2) #if hours is a whole number, convert to int
+                            if hours: #somtimes, hours is empty string
+                                hours= int(hours) if hours == int(hours) else round(hours, 2) #if hours is a whole number, convert to int
                             self.setItem(row,j,NumericalTableWidgetItem(f"{hours}"))
-
-                # #add an extra dropdown cell widget combobox for the user to add new resources
-                # self.setIndexWidget
-                # self.header=CustomComboBoxHeader()
-                # self.setVerticalHeader(self.header)
 
                 for col in range(self.columnCount()):
                     self.setColumnWidth(col, 120)
+            self.trackChanges=True
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def on_cell_pressed(self):
         try:
-            if self.isEditting:
-                # print("cell pressed")
-                # self.update_selected_cells()
-                self.close_editors()
-                self.input_buffer = ""
+            self.close_editors() #on key press, editors are opened, so close them on cell press
+            self.input_buffer = ""
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    def on_cell_double_clicked(self, row, column):
+    def on_cell_double_clicked(self, row, col):
         try:
-            if self.isEditting: 
-                if self.item(row, column) is None:
-                    self.setItem(row, column, NumericalTableWidgetItem())
-                self.input_buffer =  self.item(row, column).text()
-                self.update_selected_cells()
+            self.SaveResourceButton.setEnabled(True)
+            self.CancelEditButton.setVisible(True)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    def on_cell_changed(self, row, col):
+        try:
+            if not self.trackChanges: return
+            self.SaveResourceButton.setEnabled(True)
+            self.CancelEditButton.setVisible(True)
+            # print(filename, week, hours)
+            filename=self.verticalHeaderItem(row).data(257)
+            week=self.columnLabels[col]
+            if self.item(row, col):
+                hours= self.item(row, col).text()
+            elif self.indexWidget(self.model().index(row, col)) is not None:
+                hours= self.indexWidget(self.model().index(row, col)).text()
+            else:
+                return
+            hours= float(hours) if is_float(hours) else ''
+            self.update_resources_to_save(filename, week, hours)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+
+    def update_resources_to_save(self, filename, week, hours):
+        try:
+            self.resources_to_save[filename][week]={'Hours': hours}
+            for filename, weeks in self.resources_to_save.items():
+                print(filename, weeks.items())
+            print('\n')
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
@@ -2198,23 +2340,31 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
         try:
             if event.type() == QEvent.ContextMenu and source==self:
                 menu = QMenu() 
+                menu.addActions(self.defaultActions)
                 selectedrows=[i.row() for i in self.selectionModel().selectedRows()]
                 if len(selectedrows)>0:
                     if this_userdata!=None:
-                        # if len(selectedrows)==1: #edit resource - if only one resource is selected 
-                            # menu.addAction("Edit", lambda: self.dblclickedResource(self.item(selectedrows[0],0)))
-                            #delete action
-                            # menu.addAction("Delete", lambda: self.middleWare("Delete"))  #Deleted resources are not recoverable and are not recorded in the log
-                            menu.addAction("Delete", self.deleteResources)
-                            menu.exec_(event.globalPos())
-                            return True
-            if self.isEditting and event.type() == QEvent.KeyPress and source == self:
+                        menu.addAction("Delete", self.deleteResources)
+                menu.exec_(event.globalPos())
+                return True
+            if event.type() == QEvent.KeyPress and source == self:
                 key = event.key()
                 # print(key)
                 if key in (Qt.Key_Enter, Qt.Key_Return):
-                    # print("In enter")
-                    self.close_editors()
+                    self.close_editors() #on key press, editors are opened, so close them on enter
                     self.input_buffer = ""
+                    if event.modifiers() & Qt.ShiftModifier:
+                        self.setCurrentCell(self.currentRow() - 1, self.currentColumn())
+                    else:
+                        self.setCurrentCell(self.currentRow() + 1, self.currentColumn())
+                    return True
+                elif key in (Qt.Key_Tab, Qt.Key_Backtab):
+                    self.close_editors() #on key press, editors are opened, so close them on tab
+                    self.input_buffer = ""
+                    if key == Qt.Key_Tab:
+                        self.setCurrentCell(self.currentRow(), self.currentColumn() + 1)
+                    else:
+                        self.setCurrentCell(self.currentRow(), self.currentColumn() - 1)
                     return True
                 elif key == Qt.Key_Backspace:
                     self.input_buffer = self.input_buffer[:-1]
@@ -2226,105 +2376,42 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
                     return True
                 elif key in (Qt.Key_0, Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4, Qt.Key_5, Qt.Key_6, Qt.Key_7, Qt.Key_8, Qt.Key_9, Qt.Key_Period):
                     self.input_buffer += event.text()
-                    if self.is_valid_number(self.input_buffer):
-                        self.update_selected_cells()
-                    else:
-                        self.input_buffer = self.input_buffer[:-1]  # Remove invalid character
+                    self.update_selected_cells()
                     return True
-                elif self.isEditting and event.key() == Qt.Key_C and (event.modifiers() & Qt.ControlModifier):
-                    # self.copied_cells = [(index.row(), index.column()) for index in self.selectedIndexes()]
-                    self.copied_cells=sorted(self.selectedIndexes())
-                    return True
-                elif self.isEditting and event.key() == Qt.Key_V and (event.modifiers() & Qt.ControlModifier):
-                    if self.copied_cells:
-                        r = self.currentRow() - self.copied_cells[0].row() # row difference
-                        c = self.currentColumn() - self.copied_cells[0].column() # column difference
-                        for i in range(len(self.copied_cells)):#
-                            index = self.copied_cells[i]
-                            row, column = index.row()+r, index.column()+c
-                            # item= NumericalTableWidgetItem(self.item(index.row(), index.column()).text())
-                            item= NumericalTableWidgetItem(index.data())
-                            self.setItem(row, column, item)
-
-                            if row not in self.edited_cells: self.edited_cells[row] = set()
-                            self.edited_cells[row].add(column)
-                            #select all the cells that were pasted (to be able to call update_selected_cells)
-                            if  i!=0:   self.setCurrentCell(row, column)
-                        # print(self.edited_cells)
-                    return True
-                else:
-                    return True  # Ignore any other keys
-
             return super().eventFilter(source, event)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def is_valid_number(self, value):
-        try:
-            pattern = r'^\d*\.?\d*$'
-            return re_match(pattern, value) is not None
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
     def update_selected_cells(self):
         try:
-            selected_cells= [(index.row(), index.column()) for index in self.selectedIndexes()]
-            for row, column in selected_cells:
+            self.opened_cells= [(index.row(), index.column()) for index in self.selectedIndexes()]
+            for row, column in self.opened_cells:
                 item = self.item(row, column)
                 if item is None: 
-                    item = NumericalTableWidgetItem()
+                    item = QTableWidgetItem()
                     self.setItem(row, column, item)
                 item.setText(self.input_buffer)
-                if item.row() not in self.edited_cells: self.edited_cells[item.row()] = set()
-                self.edited_cells[item.row()].add(item.column())
                 self.openPersistentEditor(item)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
         
     def close_editors(self):
         try:
-            # print("closing editors")
-            for row in self.edited_cells:
-                for column in self.edited_cells[row]:
-                    if self.indexWidget(self.model().index(row, column)) is not None: #if the cell is being edited
-                        self.closePersistentEditor(self.item(row, column))
-                    if self.item(row, column) and not is_float(self.item(row, column).text()):
-                        self.item(row, column).setText("")
-            # print(self.edited_cells)
-            self.storeEdittedCells()
+            for row, col in self.opened_cells:
+                if self.indexWidget(self.model().index(row, col)) is not None: #if the cell is being edited
+                    print(f"Closing editor for cell {row}, {col}")
+                    self.closePersistentEditor(self.item(row, col))
+            self.opened_cells.clear()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def editResourceClicked(self):
-        try:
-            
-            if self.EditResourceButton.text()==" Edit Resource ":
-                self.verticalHeader().setStyleSheet("""QHeaderView::section{background-color:rgba(0, 0, 0, 0.1); color:black; font-size:17px; font-family:"Lato";}""")
-                self.setEditTriggers(QAbstractItemView.DoubleClicked)
-                # self.setEditTriggers(QAbstractItemView.DoubleClicked)
-                self.isEditting=True
-                self.EditResourceButton.setText(" Save Changes ")
-                self.CancelEditButton.setVisible(True)
-            else:
-                self.saveResources()
-                self.verticalHeader().setStyleSheet("""QHeaderView::section{ border:1px solid rgba(176, 196, 84, 0.9); color: rgba(0,0,0,0.5); padding-left:10px;}""")
-                self.setEditTriggers(QAbstractItemView.NoEditTriggers)
-                self.isEditting=False
-                self.EditResourceButton.setText(" Edit Resource ")
-                self.CancelEditButton.setVisible(False)
-                # print(self.edited_cells)
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
+
     def cancelEditClicked(self):
         try:
             self.verticalHeader().setStyleSheet("""QHeaderView::section{ border:1px solid rgba(176, 196, 84, 0.9); color: rgba(0,0,0,0.5); padding-left:10px;}""")
-            self.setEditTriggers(QAbstractItemView.NoEditTriggers)
-            self.isEditting=False
-            self.EditResourceButton.setText(" Edit Resource ")
+            # self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.SaveResourceButton.setEnabled(False)
             self.CancelEditButton.setVisible(False)
-            if len(self.edited_cells)>0 or len(self.resources_to_save)>0:
-                self.edited_cells.clear()
+            if len(self.resources_to_save)>0:
                 self.resources_to_save.clear()
                 self.oncomplete()
             
@@ -2342,66 +2429,49 @@ class ResourceWeeklyBreakdownTable(QTableWidget):
             self.oncomplete()
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def storeEdittedCells(self):
+
+    def saveResourceClicked(self):
         try:
-            if self.isEditting:
-                # print("storing edited cells")
-                if len(self.edited_cells)>0:
-                    # print(self.edited_cells)
-                    for row in self.edited_cells: #for each row edited
-                        # print(row)
-                        verticalheaderitem=self.verticalHeaderItem(row) #get the filename in row header
-                        if verticalheaderitem and verticalheaderitem.data(257) is not None:
-                            filename=verticalheaderitem.data(257)
-                        else:
-                            filename=None
-                        rowUpdate={}
-                        for column in self.edited_cells[row]: #for each column edited
-                            item=self.item(row,column)
-                            if item: # get the hours edited and the week
-                                hours=float(item.text()) if is_float(item.text()) else ''
-                                week=self.horizontalHeaderItem(column).text()
-                                rowUpdate[week]={'Hours':hours}
-                        if filename not in self.resources_to_save:   
-                            self.resources_to_save[filename]=rowUpdate
-                        else:
-                            self.resources_to_save[filename].update(rowUpdate)
-                    # print(self.edited_cells)
-                    self.edited_cells.clear()
-        except:
-            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-    
-    def saveResources(self):
-        try:
-            self.storeEdittedCells()
-            # print(self.resources_to_save)
+            def track_last_edited_cell():
+                try:
+                    selectedcells=[(i.row(), i.column()) for i in self.selectionModel().selectedIndexes()]
+                    if selectedcells:
+                        for row, col in selectedcells:
+                            print(row, col)
+                            self.on_cell_changed(row, col)
+                except:
+                    MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+            if not self.SaveResourceButton.isEnabled(): return
+            track_last_edited_cell()
             for filename, weeks in self.resources_to_save.items():
                 if not filename: continue
                 user=filename.split('-')[1]
                 resourceFolder=users_jsons+"\\"+user+"\\Resources"
                 if path.exists(resourceFolder)==False: mkdir(resourceFolder) # create the folder if it doesn't exist
                 with open(resourceFolder+"\\"+filename, 'r+') as f:
-                    resource=json_load(f)
-                    resource['EditBy']=this_userdata["initial"] if this_userdata!=None else ""
-                    for week in weeks:
-                        for wksobj in resource['Weeks']:
+                    data=json_load(f)
+                    data['EditBy']=this_userdata["initial"] if this_userdata!=None else ""
+                    for week in weeks: #for each week that was edited
+                        for i in  range(len(data['Weeks'])): #this second loop is needed as the Weeks is a list and not a dictionary
+                            wksobj=data['Weeks'][i]
                             if wksobj['Week']==week:
-                                if weeks[week]['Hours']=='': #if the hours is empty, remove the week from the resource
-                                    resource['Weeks'].remove(wksobj)
+                                if weeks[week]['Hours']=='': #if the hours is empty, remove the week from the data
+                                    del data['Weeks'][i]
                                 else:
                                     wksobj['Hours']=weeks[week]['Hours']
                                 break
                         else:
-                            if weeks[week]['Hours']!='': #if the hours is not empty, add the week to the resource
-                                resource['Weeks'].append({'Week':week, 'Hours':weeks[week]['Hours'], 'TaskDesc':"",'Stage':""})
+                            if weeks[week]['Hours']!='': #if the hours is not empty, add the week to the data
+                                data['Weeks'].append({'Week':week, 'Hours':weeks[week]['Hours'], 'TaskDesc':"",'Stage':""})
                     f.seek(0)#move the file pointer to the beginning of the file
                     f.truncate() #clear the file
-                    json_dump(resource, f, indent=4) #write the updated resource to the file
-                    # if resource['Weeks']==[]: #if there are no weeks in the resource, delete the resource
-                    #     remove(resourceFolder+"\\"+filename)
+                    json_dump(data, f, indent=4) #write the updated data to the file
+                    # if data['Weeks']==[]: #if there are no weeks in the data, delete the data
+                    #     remove(dataFolder+"\\"+filename)
             self.resources_to_save.clear()
             self.oncomplete()
+            self.SaveResourceButton.setEnabled(False)
+            self.CancelEditButton.setVisible(False)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
@@ -2542,7 +2612,7 @@ class ResourceTabWidget(QWidget):
             self.holidays= self.getHolidays()
             self.resourceWeeklyTotalTable.populateTable(Resources_df, holidays=self.holidays)
 
-            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(forUsers=True, oncomplete=self.refreshResourceWindow, includeNewResourceButton=True, includeEditResourceButton=True)
+            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(forUsers=True, oncomplete=self.refreshResourceWindow, includeNewResourceButton=True)
 
             #syncronize their horizontal scrollbars
             self.resourceWeeklyTotalTable.horizontalScrollBar().valueChanged.connect(self.resourceWeeklyBreakdownTable.horizontalScrollBar().setValue)
@@ -2589,7 +2659,7 @@ class ResourceTabWidget(QWidget):
             resourceBoardLayout.addWidget(self.clickedUserLabel, 1, 0)
             self.resourceWeeklyBreakdownTable.NewResourceButton.clicked.connect(self.newResourceClicked)
             resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.NewResourceButton, 1, 1)
-            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.EditResourceButton, 1, 2)
+            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.SaveResourceButton, 1, 2)
             resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.CancelEditButton, 1, 3)
 
             # resourceBoardLayout.addLayout(hbox, 1, 0, 1, 2)
@@ -2608,9 +2678,7 @@ class ResourceTabWidget(QWidget):
 
     def clickedUserInTotalTable(self, row):
         try:
-            self.resourceWeeklyBreakdownTable.storeEdittedCells()
-            self.resourceWeeklyBreakdownTable.edited_cells.clear()
-            self.resourceWeeklyBreakdownTable.copied_cells.clear()
+            # self.resourceWeeklyBreakdownTable.copied_cells.clear()
             clickedUserItem=self.resourceWeeklyTotalTable.verticalHeaderItem(row)
             if clickedUserItem is not None:
                 user=clickedUserItem.text()
@@ -2821,7 +2889,7 @@ class TimeSheetWindow(QMainWindow):
             # self.weekBeginBox.setMaximumSize(190,50)
             self.weekBeginBox.currentTextChanged.connect(self.user_week_Changed)
             
-            # self.weekBegin.currentTextChanged.connect(lambda: self.projectStatusChanged(self.userBox.checkedText))#Connecting the change in the drop-down to its function
+            # self.weekBegin.currentTextChanged.connect(lambda: self.filter_projectStatus(self.userBox.checkedText))#Connecting the change in the drop-down to its function
 
             userLabel=QLabel("Employee:")
             userLabel.setStyleSheet("font-size:11pt; font-weight:bold; font-family:'Lato'; padding-left:10px; padding-right:10px; background:white; border: 1px solid rgba(176, 196, 84, 0.9); border-right: none;")   
@@ -2866,6 +2934,8 @@ class TimeSheetWindow(QMainWindow):
             save_submit_layout.addWidget(self.submitButton)
             save_submit_layout.addStretch(1)
 
+
+          #Headers and layout
             self.OptionsLayout=QHBoxLayout()
             # self.OptionsLayout.addStretch(2)
             # self.OptionsLayout.addWidget(RefreshButton)  
@@ -2874,7 +2944,6 @@ class TimeSheetWindow(QMainWindow):
             self.OptionsLayout.addStretch(1)
             self.OptionsLayout.addWidget(adminbuttons['userprofile'])         
             self.OptionsLayout.addStretch(1)
-
 
             logo=QLabel()
             logo.setPixmap(QPixmap(RCDC_icon2).scaledToHeight(50, Qt.SmoothTransformation))
@@ -2911,7 +2980,7 @@ class TimeSheetWindow(QMainWindow):
             # split.setSizes([1000, 300])
             # start_time=time.time()
 
-            self.user_week_Changed()
+            # self.user_week_Changed()
             # MainLayout=QGridLayout()
             MainLayout=QVBoxLayout()
             MainLayout.addSpacing(10)
@@ -2935,7 +3004,7 @@ class TimeSheetWindow(QMainWindow):
             menuBar.addAction(homeMenu)
             homeMenu.triggered.connect(lambda: widget.setCurrentWidget(initwindow))
             backMenu.triggered.connect(lambda: widget.setCurrentWidget(initwindow))
-            QShortcut(QKeySequence('Backspace'),self).activated.connect(lambda: widget.setCurrentWidget(initwindow))
+            # QShortcut(QKeySequence('Backspace'),self).activated.connect(lambda: widget.setCurrentWidget(initwindow))
             # print("Time taken to load timesheet window: ", time.time()-combined_time)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -3028,14 +3097,21 @@ class TimeSheetWindow(QMainWindow):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-class TimeSheetTable(QTableWidget):
+class TimeSheetTable(TableWidget):
     def __init__(self):
         try:
-            super().__init__()
+            super().__init__(allowPaste=True, allowEdit=True)
             self.projectsDict={'':''}
             self.projectsDict.update({proj.split(' - ',1)[0]:proj.split(' - ',1)[1] for proj in glob_Project3Code_dict})
             self.projectNos=list(self.projectsDict.keys())
             self.projectNames=list(self.projectsDict.values()) +['Holiday']
+
+            class DoubleValidator(QDoubleValidator):
+                def validate(self, input, pos):
+                    if input == "":
+                        return QDoubleValidator.Acceptable, input, pos
+                    return super().validate(input, pos)
+                
             class CustomDelegate(QStyledItemDelegate):
                 def createEditor(self, parent, option, index):
                     editor = QLineEdit(parent)
@@ -3053,7 +3129,7 @@ class TimeSheetTable(QTableWidget):
                         editor.editingFinished.connect(lambda r=row: timeSheetTable.projectNameChanged(r, editor.text()))
                         editor.completer().activated.connect(lambda text, r=row: timeSheetTable.projectNameChanged(r, text))
                     elif col in range(3,10):
-                        editor.setValidator(QDoubleValidator())
+                        editor.setValidator(DoubleValidator())
                     return editor
 
             self.setItemDelegate(CustomDelegate()) #set the delegate for the table to be restricted to numbers only for the Mon to Fri columns
@@ -3071,12 +3147,12 @@ class TimeSheetTable(QTableWidget):
                 
             # self.verticalHeader().setVisible(False)
             
-            self.totalTable=QTableWidget(1, len(self.columnLabels))
+            self.totalTable=TableWidget(1, len(self.columnLabels))
             
             self.totalTable.setVerticalHeaderLabels([""])
             # self.totalTable.setRowHeight(0, 10)
             #span the total table
-            self.totalTable.setSpan(0, 1, 1, 2)
+            # self.totalTable.setSpan(0, 1, 1, 2)
             self.totalTable.horizontalHeader().setVisible(False)
             # self.totalTable.verticalHeader().setVisible(False)
             self.setColumnWidth(self.columnLabels.index('Project No.'), 100)
@@ -3105,9 +3181,20 @@ class TimeSheetTable(QTableWidget):
             self.totalTable.horizontalScrollBar().valueChanged.connect(self.horizontalScrollBar().setValue)
             self.totalTable.setMaximumHeight(60)
 
-            
-             
             self.initiateRows()
+            self.installEventFilter(self)
+            self.totalTable.installEventFilter(self)
+        except:
+            MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
+    
+    def eventFilter(self, source, event):
+        try:
+            if event.type() ==QEvent.ContextMenu and source in [self, self.totalTable]:
+                menu=QMenu()
+                menu.addActions(source.defaultActions)
+                menu.exec_(event.globalPos())
+                return True
+            return super().eventFilter(source, event)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
@@ -3133,14 +3220,17 @@ class TimeSheetTable(QTableWidget):
             
             for i in range(len(self.columnLabels)-1):
                 totalitem=QTableWidgetItem("")
-                totalitem.setBackground(subtotalBackground)
+                if i>1:  totalitem.setBackground(subtotalBackground)
                 totalitem.setFont(subtotalFont)
+                totalitem.setFlags(totalitem.flags() & ~Qt.ItemIsEditable)
                 self.totalTable.setItem(0, i, totalitem)
-            self.totalTable.setItem(0,i+1, QTableWidgetItem(""))
-            self.totalTable.item(0, i+1).setFont(QFont("Lato", 11, QFont.Bold))
+            overallTotalitem=QTableWidgetItem("")
+            overallTotalitem.setFlags(overallTotalitem.flags() & ~Qt.ItemIsEditable)
+            overallTotalitem.setFont(QFont("Lato", 11, QFont.Bold))
+            self.totalTable.setItem(0,i+1, overallTotalitem)
             # self.totalTable.item(0, i+1).setBackground(QColor(
             
-            self.totalTable.item(0, 1).setText("TOTAL")
+            self.totalTable.item(0, 2).setText("TOTAL")
             self.cellChanged.connect(self.oncellChanged)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
@@ -3305,11 +3395,12 @@ class ProjectsDeadlineWidget(QWidget):
             self.NewDeadlineButton.setCursor(QCursor(Qt.PointingHandCursor))
             QShortcut(QKeySequence('Ctrl+D'),self).activated.connect(lambda: self.updateDeadline(None))
             #Deadline table
-            self.deadlineTable=QTableWidget(0,3)
+            self.deadlineTable=TableWidget(0,3)
             self.deadlineTable.verticalHeader().setVisible(False)
             self.deadlineTable.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.deadlineTable.itemDoubleClicked.connect(self.deadlineTableDblClicked)
             # self.deadlineTable.setSortingEnabled(True)
+
 
             MainLayout=QVBoxLayout()
             MainLayout.addWidget(self.NewDeadlineButton)
@@ -3506,17 +3597,18 @@ class ProjectsWidget(QWidget):
             self.project_search = QLineEdit()
             self.project_search.setPlaceholderText("Search")
             self.project_search.setMaximumSize(400,28)
-            self.projectfilterOptions=CheckableComboBox("Projects Filter")
-            # self.projectfilterOptions=QComboBox()
+            self.projectStatusBox=CheckableComboBox("Projects Filter")
+            self.projectStatusBox.setStyleSheet("QComboBox{padding-left:20px;}")
 
-            self.projectfilterOptions.addCheckableItems(["Live","Bid", "Paused", "Completed","Loss","OLD",""])
-            # self.projectfilterOptions.currentTextChanged.connect(lambda: self.projectStatusChanged(self.projectfilterOptions.checkedText))#Connecting the change in the drop-down to its function
+            self.projectStatusBox.setMinimumHeight(40)
+            self.projectStatusBox.setMaximumSize(250,60)
+            # self.projectStatusBox=QComboBox()
+
+            self.projectStatusBox.addCheckableItems(["Live","Bid", "Paused", "Completed","Loss","OLD",""])
+            # self.projectStatusBox.currentTextChanged.connect(lambda: self.filter_projectStatus(self.projectStatusBox.checkedText))#Connecting the change in the drop-down to its function
             self.project_search.textChanged.connect(self.project_searchChanged)
             self.project_search.setStyleSheet("padding-left:20px;")
-            self.projectfilterOptions.setStyleSheet("QComboBox{padding-left:20px;}")
 
-            self.projectfilterOptions.setMinimumHeight(40)
-            self.projectfilterOptions.setMaximumSize(250,60)
           
           #Getting projects details from database aand populate table with projects
             con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Central_Database_accdb+';'
@@ -3551,13 +3643,14 @@ class ProjectsWidget(QWidget):
             #(ignore the first 7 projects as these are not actual projects i.e. general,innovation,marketing,e.t.c)
             data = [p for p in data if not p.ProjectNo.startswith('0') or p.ProjectNo=="0007"] #Remove projects that start with 0 (i.e. 0001,0002,0003,0004,0005,0006) except for 0007
 
-            projectsTable = QTableWidget(len(data), 7)
+            projectsTable = TableWidget(len(data), 7)
             
-            projectsTable.setStyleSheet(projectsTable.styleSheet()+"""QHeaderView{background : transparent;}QHeaderView::section{font-family: "Microsoft YaHei"; color: #FFFFFF;background:#90a9c6; text-align:left; min-height: 49px; max-height:49px;
+            projectsTable.setStyleSheet(projectsTable.styleSheet()+"""QHeaderView{background : transparent;}QHeaderView::section{font-family: "Microsoft YaHei"; color: #555555; background:#90a9c6; text-align:left; min-height: 49px; max-height:49px;
             margin-left:0px;padding-left: 0px;} QTableWidget{background: #FFFFFF; border:1px; border-style:outset; font-size:15px;}""")
 
             projectsTable.verticalHeader().setDefaultSectionSize(40)
             projectsTable.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignCenter)
+
 
           #Setting the header title of the table
             projectsTable.columnLabels = ["Project","Client","Status", "End Client", "Architect", "Lead", "Director", "Key People", "Sector", "Public/Private", "Fee", "Likelihood"]
@@ -3734,7 +3827,7 @@ class ProjectsWidget(QWidget):
             #     }""")
             
             # self.rscManager=ResourceManager(include_chart=True, include_period=True, updateDisplay=False)
-            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(includeNewResourceButton=True, includeEditResourceButton=True, oncomplete=self.refreshResources)
+            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(includeNewResourceButton=True, oncomplete=self.refreshResources)
             self.resourceWeeklyBreakdownTable.verticalHeader().setFixedWidth(100)
             minweek, maxweek, _ = getResourceMinMaxWeeks(Resources_df)
             #get week strings from minweek to maxweek with 7 days interval
@@ -3752,7 +3845,7 @@ class ProjectsWidget(QWidget):
             resourceBoardLayout=QGridLayout()
             self.resourceWeeklyBreakdownTable.NewResourceButton.clicked.connect(self.newResourceClicked)
             resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.NewResourceButton, 0, 0)
-            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.EditResourceButton, 0, 1)
+            resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.SaveResourceButton, 0, 1)
             resourceBoardLayout.addWidget(self.resourceWeeklyBreakdownTable.CancelEditButton, 0, 2)
 
             # resourceBoardLayout.addLayout(hbox, 1, 0, 1, 2)
@@ -3774,7 +3867,7 @@ class ProjectsWidget(QWidget):
           #Page Layouts
             projectsTableLayout=QVBoxLayout()
             # projectsTableLayout.addWidget(self.ChangeStartTimeButton, 0, 1, Qt.AlignRight)
-            projectsTableLayout.addWidget(self.projectfilterOptions)
+            projectsTableLayout.addWidget(self.projectStatusBox)
             projectsTableLayout.addWidget(self.project_search)
             projectsTableLayout.addWidget(projectsTable)
             projectsTableLayout.addWidget(self.projectsCountLabel)
@@ -3811,7 +3904,7 @@ class ProjectsWidget(QWidget):
             FullLayout.addLayout(MainLayout)  
             self.setLayout(FullLayout)
             #Check 'Live' as default in the filter
-            self.projectfilterOptions.handleItemPressed(self.projectfilterOptions.findText("Live"))
+            self.projectStatusBox.handleItemPressed(self.projectStatusBox.findText("Live"))
             # projectsTable.selectRow([i for i in range(projectsTable.rowCount()) if projectsTable.item(i,2).text()=="Live"][0])
 
         except:
@@ -3823,6 +3916,7 @@ class ProjectsWidget(QWidget):
                 selectedRows=[i.row() for i in projectsTable.selectionModel().selectedRows() if projectsTable.isRowHidden(i.row())==False]
                 if selectedRows:
                     menu=QMenu(self)
+                    menu.addActions(projectsTable.defaultActions)
                     if len(selectedRows)==1:
                         self.slctdProjectIndex=selectedRows[0]
                         menu.addAction("Edit", self.editProjectClicked)
@@ -3845,12 +3939,12 @@ class ProjectsWidget(QWidget):
 
     def project_searchChanged(self):
         try:
-            self.projectfilterOptions.blockSignals(True)
-            if self.projectfilterOptions.model().item(self.projectfilterOptions.findText("All")).checkState()==Qt.Unchecked:
+            self.projectStatusBox.blockSignals(True)
+            if self.projectStatusBox.model().item(self.projectStatusBox.findText("All")).checkState()==Qt.Unchecked:
                 x=self.project_search.text()
-                self.projectfilterOptions.handleItemPressed(self.projectfilterOptions.findText("All"))
+                self.projectStatusBox.handleItemPressed(self.projectStatusBox.findText("All"))
                 self.project_search.setText(x)
-            self.projectfilterOptions.blockSignals(False)
+            self.projectStatusBox.blockSignals(False)
             count=0
             if self.project_search.text()=='':
                 #if search box is empty, show all items in table
@@ -3872,8 +3966,9 @@ class ProjectsWidget(QWidget):
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-    def projectStatusChanged(self,statusList):
+    def filter_projectStatus(self,statusList):
         try:
+            '''param statusList: list of statuses to show in the table'''
             #empty search box
             self.project_search.blockSignals(True)
             self.project_search.setText("")
@@ -3883,8 +3978,9 @@ class ProjectsWidget(QWidget):
             for row in range(projectsTable.rowCount()):
                 projectsTable.setRowHidden(row, False) 
                 count+=1
-                if "All" in statusList:
+                if "All" in statusList: #if all is selected, show all projects
                     continue
+                #if the status of the project is not in the selected status list, hide the row
                 if projectsTable.item(row,projectsTable.columnLabels.index("Status")).text() not in statusList:
                     projectsTable.setRowHidden(row, True)
                     count-=1
@@ -4286,7 +4382,7 @@ class ProjectsWidget(QWidget):
                         # self.hourlyrates_df['Hourly Rate'] = self.hourlyrates_df['Hourly Rate'].apply(lambda x: float(x.replace("£", "")))
                         
                         #Create a table to display hourly rates
-                        self.hourlyratestable = QTableWidget(1,2)
+                        self.hourlyratestable = TableWidget(1,2, allowPaste=True)
                         self.hourlyratestable.setStyleSheet("""
                             QHeaderView::section { background-color: #f2f2f2; padding: 4px; border: 1px solid #d4d4d4; font-size: 11pt;}
                             QTableWidget::item:selected { background-color: rgba(168, 208, 230, 0.5); color: #000; }
@@ -4298,6 +4394,7 @@ class ProjectsWidget(QWidget):
 
                         self.hourlyratestable.setColumnWidth(0, 200)
                         self.hourlyratestable.cellDoubleClicked.connect(self.edit_grade)
+                        self.hourlyratestable.cellChanged.connect(self.edit_grade)
                         self.hourlyratestable.installEventFilter(self)
                         QShortcut(QKeySequence("Delete"), self.hourlyratestable, self.delete_grade)
 
@@ -4392,6 +4489,7 @@ class ProjectsWidget(QWidget):
                 def eventFilter(self,source, event):
                     if event.type() == QEvent.ContextMenu:
                         menu = QMenu()
+                        menu.addActions(self.hourlyratestable.defaultActions)
                         selectedRows=[i.row() for i in self.hourlyratestable.selectedIndexes()]
                         if len(selectedRows)>0:
                             menu.addAction("Delete", self.delete_grade)
@@ -4416,8 +4514,6 @@ class ProjectsWidget(QWidget):
 
     def on_projectClick(self):
         try:
-            # print(f"Edited cells {self.resourceWeeklyBreakdownTable.edited_cells}")
-            # print(f"Resources to save {self.resourceWeeklyBreakdownTable.resources_to_save}")
             selectedRows=[i.row() for i in projectsTable.selectionModel().selectedRows() if projectsTable.isRowHidden(i.row())==False]
             if len(selectedRows)==1:
                 self.slctdProjectIndex=selectedRows[0]
@@ -4464,12 +4560,8 @@ class ProjectsWidget(QWidget):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     
-    
     def updateResourceWeeklyBreakdownTable(self, projectno):
         try:
-            self.resourceWeeklyBreakdownTable.storeEdittedCells()
-            self.resourceWeeklyBreakdownTable.edited_cells.clear()
-            self.resourceWeeklyBreakdownTable.copied_cells.clear()
             projectresources= Resources_df[Resources_df['ProjectNo']==projectno]
             self.resourceWeeklyBreakdownTable.populateTable(projectresources)
             # print(self.resourceWeeklyBreakdownTable.resources_to_save)
@@ -5157,7 +5249,7 @@ class Management_Window(QMainWindow):
         
            #Users Table
             self.usersTableColumnLabels= ["Device","Initial","User's name", "Grade", "Wrk Hrs Start","Wrk Hrs End", "Downtime","Lunch Hours","Annual Holidays","Remaining Holidays","Allowed Carried Holidays","Remaining Carried Holidays","Permission Level"]
-            self.usersTable=QTableWidget(len(json_data["employees"]), len(self.usersTableColumnLabels))
+            self.usersTable=TableWidget(len(json_data["employees"]), len(self.usersTableColumnLabels))
             self.usersTable.itemDoubleClicked.connect(self.editUser)
             self.usersTable.setHorizontalHeaderLabels(self.usersTableColumnLabels)
             for usr in json_data["employees"]:
@@ -5187,7 +5279,8 @@ class Management_Window(QMainWindow):
             self.usersTable.setStyleSheet("""QHeaderView::section{font-family: "Microsoft YaHei"; text-align:left; font:bold; background: #d4d6ed; max-height:49px;
             margin-left:0px;padding-left: 0px;} QTableWidget{background: #FFFFFF; border:1px; border-style:outset; font-family:"Microsoft YaHei"; } QTableWidget::item::selected{color:rgba(0,0,0,0.7); background:#ecf8fc; font:bold; border-top: 1px solid rgba(255,255,255,0.9); border-bottom: 1px solid rgba(255,255,255,0.9); }""")
             self.usersTable.setMaximumWidth(800)
-            # self.usersTable.setSortingEnabled(True)
+
+               # self.usersTable.setSortingEnabled(True)
 
            #New user button
             self.NewUserButton = QToolButton()
@@ -5412,7 +5505,7 @@ class Management_Window(QMainWindow):
            #Holidays Table
             self.AllHolidays=self.getAllHolidays()
 
-            self.holidaysTable=QTableWidget(len(self.AllHolidays),6)   
+            self.holidaysTable=TableWidget(len(self.AllHolidays),6)   
             #Setting header of table
             self.holidaysTable.columnLabels= ["For","Comment","Date","Days","StartDate","Status"]
             self.holidaysTable.setHorizontalHeaderLabels(self.holidaysTable.columnLabels)
@@ -5469,6 +5562,7 @@ class Management_Window(QMainWindow):
             self.holidaysTable.setSortingEnabled(True)
             self.holidaysTable.sortByColumn(self.holidaysTable.columnLabels.index("Date"),Qt.AscendingOrder)
             self.holidaysTable.verticalHeader().setHidden(True)
+
 
             self.holidaysTable.setColumnWidth(1,270)
             self.holidaysTable.setColumnWidth(2,225)
@@ -5618,6 +5712,7 @@ class Management_Window(QMainWindow):
             if event.type()==QEvent.ContextMenu and source==self.usersTable:
                 if len(source.selectionModel().selectedRows())>0:
                     menu = QMenu(self)
+                    menu.addActions(self.usersTable.defaultActions)
                     if len(source.selectionModel().selectedRows())==1:
                         menu.addAction("Edit",self.editUser)
                     menu.addAction("Delete",self.deleteUser)
@@ -5626,6 +5721,7 @@ class Management_Window(QMainWindow):
             elif event.type()==QEvent.ContextMenu and source ==self.holidaysTable:
                 if len(source.selectionModel().selectedRows())>0:
                     menu = QMenu(self)
+                    menu.addActions(self.holidaysTable.defaultActions)
                     if 'unapproved' in [source.item(i.row(),source.columnLabels.index("For")).data(256) for i in (source.selectionModel().selectedRows())]:
                         menu.addAction(QIcon(tickdone_icon2),"Approve",self.approveHolidays)
                     menu.addAction("Delete",self.deleteHolidays)
@@ -6995,7 +7091,7 @@ class ProjectMenuWindow(QMainWindow):
            #Resources
             # self.rscManager=ResourceManager(include_chart=True, project=ThisProject_foldername, include_period=True, updateDisplay=False)
             # self.updateChart()
-            # self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(oncomplete=self.refreshResourceWindow, includeNewResourceButton=True, includeEditResourceButton=True)
+            # self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(oncomplete=self.refreshResourceWindow, includeNewResourceButton=True)
             self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable()
             self.resourceWeeklyBreakdownTable.removeEventFilter(self.resourceWeeklyBreakdownTable)
             
@@ -7207,7 +7303,6 @@ class DrawingsandSketchesWindow(QMainWindow):
             self.copytoservicesaction.triggered.connect(lambda: self.Copyclicked(self.copytoservicesaction))
             # self.CopytoButton.setGeometry(QRect(180, 10,115, 40))
             self.CopytoButton.setIconSize(QSize(40, 40))
-            self.CopytoButton.setEnabled(False)
           
           #New Drawing/Sketch Button
             self.NewButton = QToolButton()
@@ -7225,9 +7320,9 @@ class DrawingsandSketchesWindow(QMainWindow):
             self.drawaction=menu.addAction("2d Drawing")
             self.sketchaction=menu.addAction("2d Sketch")
             self.drawaction.triggered.connect(lambda:self.NewDrawingClicked("2d Sketch"))
-            QShortcut(QKeySequence('Ctrl+D'),self).activated.connect(lambda:self.NewDrawingClicked("2d Sketch"))
+            self.drawaction.setShortcut(QKeySequence('Ctrl+N'))
             self.sketchaction.triggered.connect(lambda:self.NewDrawingClicked("2d Drawing"))
-            QShortcut(QKeySequence('Ctrl+S'),self).activated.connect(lambda:self.NewDrawingClicked("2d Drawing"))
+            # QShortcut(QKeySequence('Ctrl+S'),self).activated.connect(lambda:self.NewDrawingClicked("2d Drawing"))
           
           #Backgrounds Button
             self.Backgrounds =QToolButton()
@@ -7255,7 +7350,7 @@ class DrawingsandSketchesWindow(QMainWindow):
             background-color : rgba(208,236,252,0.4); border-color : rgba(164, 204, 252,1); border-width: 1px;}""")
             self.RefreshButton.setIconSize(QSize(45, 35))
             self.RefreshButton.clicked.connect(self.RefreshClicked)#Connecting the button to its function when clicked
-            QShortcut(QKeySequence('F5'),self).activated.connect(self.RefreshClicked)
+            self.RefreshButton.setShortcut(QKeySequence('F5'))
 
           #QA button
             self.QAButton = QToolButton()
@@ -7287,22 +7382,20 @@ class DrawingsandSketchesWindow(QMainWindow):
             # currentProjectLabel.setGeometry(QRect(450, 70, 290,40))
 
           #Drawings Table
-            self.DrawingsTable = QTableWidget(1,4)
-            # self.DrawingsTable.customContextMenuRequested.connect(self.contextMenuEvent)
+            self.DrawingsTable = TableWidget(1,4)
+            
           
           #Table header Titles
-            self.DrawingsTable.setHorizontalHeaderLabels(["","Reference","DTitle","Current Revision"])
+            self.DrawingsTable.setHorizontalHeaderLabels(["","Reference","Title","Current Revision"])
             self.Drawings_search=QLineEdit()
             self.Drawings_search.setPlaceholderText("Search")
 
           #Sketches Table
-            self.SketchesTable = QTableWidget(1,4)
+            self.SketchesTable = TableWidget(1,4)
             # self.SketchesTable.setGeometry(QRect(940, 170, 851, 766))
           
           #Table Header
             self.SketchesTable.setHorizontalHeaderLabels(["","Reference","Title","Current Revision"])
-            # self.openSkSc=QShortcut(QKeySequence('Ctrl+O'),self)
-            # self.openSkSc.activated.connect(lambda: self.openfile(self.SketchesTable))
             self.Sketches_search=QLineEdit()
             self.Sketches_search.setPlaceholderText("Search")
 
@@ -7313,15 +7406,10 @@ class DrawingsandSketchesWindow(QMainWindow):
           #Get drawings and sketches
             if path.exists(Project_Database): #Check if the path exists, if it does, get Drawings and Sketches
                 self.DrawingsTable.itemDoubleClicked.connect(lambda: self.openfile(self.DrawingsTable))
-                self.Drawings_search.textChanged.connect(lambda: self.filter_search(self.DrawingsTable,self.Drawings_search))
                 self.SketchesTable.itemDoubleClicked.connect(lambda: self.openfile(self.SketchesTable))
+                self.Drawings_search.textChanged.connect(lambda: self.filter_search(self.DrawingsTable,self.Drawings_search))
                 self.Sketches_search.textChanged.connect(lambda: self.filter_search(self.SketchesTable,self.Sketches_search))
 
-                QShortcut(QKeySequence('Delete'),self).activated.connect(lambda: self.delete(self.DrawingsTable))
-                QShortcut(QKeySequence('Ctrl+Delete'),self).activated.connect(lambda: self.delete(self.SketchesTable))
-
-                self.DrawingsTable.installEventFilter(self)
-                self.SketchesTable.installEventFilter(self)
 
                 con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';'
                 conn = pyodbc_connect(con_string)
@@ -7390,9 +7478,12 @@ class DrawingsandSketchesWindow(QMainWindow):
                         if stage!=glob_ProjectRIBAstages[ThisProject_no+' - '+ ThisProject_name]:#If this stage is not the current stage for this project, collapse it  
                             table.selectRow(stagerow)
                             self.openfile(table)#fold stages
+                    
                     table.itemSelectionChanged.connect(lambda: self.selection_changed())
                     table.clearSelection()
                     
+                    table.installEventFilter(self)
+
                     #Table header expansion   
                     header = table.horizontalHeader()       
                     # header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -7415,8 +7506,38 @@ class DrawingsandSketchesWindow(QMainWindow):
                     #selection blue ecf4fd breen ecfcf8
                     table.setShowGrid(False)
                     table.verticalHeader().setVisible(False)
+
+
+
                 cursor.close()
                 conn.close()
+
+                opendrawingAction=QAction("Open",self.DrawingsTable)
+                opendrawingAction.triggered.connect(lambda: self.openfile(self.DrawingsTable))
+                opendrawingAction.setShortcut(QKeySequence.Open)
+                opendrawingAction.setShortcutContext(Qt.WidgetShortcut)
+                self.DrawingsTable.addAction(opendrawingAction)
+
+                opensketchAction=QAction("Open",self.SketchesTable)
+                opensketchAction.triggered.connect(lambda: self.openfile(self.SketchesTable))
+                opensketchAction.setShortcut(QKeySequence.Open)
+                opensketchAction.setShortcutContext(Qt.WidgetShortcut)
+                self.SketchesTable.addAction(opensketchAction)
+
+                deletedrawingAction=QAction("Delete",self.DrawingsTable)
+                deletedrawingAction.triggered.connect(lambda: self.delete(self.DrawingsTable))
+                deletedrawingAction.setShortcut(QKeySequence.Delete)
+                deletedrawingAction.setShortcutContext(Qt.WidgetShortcut)
+                self.DrawingsTable.addAction(deletedrawingAction)
+
+                deletesketchAction=QAction("Delete",self.SketchesTable)
+                deletesketchAction.triggered.connect(lambda: self.delete(self.SketchesTable))
+                deletesketchAction.setShortcut(QKeySequence.Delete)
+                deletesketchAction.setShortcutContext(Qt.WidgetShortcut)
+                self.SketchesTable.addAction(deletesketchAction)
+
+
+
             else: #If the path isn't found, put "No PROJECT ADMIN DATABASE found" in the table
                 self.DrawingsTable.setRowCount(1)
                 self.DrawingsTable.setItem(0, 0,QTableWidgetItem("No PROJECT ADMIN DATABASE found"))
@@ -7494,7 +7615,6 @@ class DrawingsandSketchesWindow(QMainWindow):
             backMenu.triggered.connect(self.backAction)
             QShortcut(QKeySequence('Backspace'),self).activated.connect(self.backAction)
 
-
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
             menuBar = self.menuBar()
@@ -7513,6 +7633,7 @@ class DrawingsandSketchesWindow(QMainWindow):
             if event.type() == QEvent.ContextMenu and source in [self.DrawingsTable, self.SketchesTable]:
                 if len(source.selectionModel().selectedRows())>0:
                     menu = QMenu()
+                    menu.addActions(source.defaultActions)
                     menu.addAction("Delete", lambda: self.delete(source))
                     menu.addAction("Open", lambda: self.openfile(source))
                     menu.addAction("Copy to SS", lambda:self.copytoSS(source))
@@ -7536,7 +7657,7 @@ class DrawingsandSketchesWindow(QMainWindow):
                             break # Show drawings as long as the full criteria(in the if statement) is met by any column in the row and then move to next row
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
+ 
     def delete(self, tableobj):
         try:
             selectionindexes = [i.row() for i in tableobj.selectionModel().selectedRows(0)] #Make a list of selected drawings
@@ -7550,15 +7671,16 @@ class DrawingsandSketchesWindow(QMainWindow):
             
             selectionindexes = [i for i in selectionindexes if tableobj.columnSpan(i,1) <= 2] #Remove any one that isn't drawing
             if len(selectionindexes)>0:
-                qm= QMessageBox() #Message box to confirm deletion
-                ret = qm.question(self,'Delete selected item(s)', "Are you sure you want to delete these " + str(len(selectionindexes)) + " item(s)?", qm.Yes | qm.No)
-                if ret == qm.Yes:
-                    if tableobj == self.DrawingsTable: # Check for selected items Table to know what folder to delete drawings from ('1 Drawings' or '0 Sketches') and what Access table to delete records from (Drawings or Sketches)
+                if tableobj == self.DrawingsTable: # Check for selected items Table to know what folder to delete drawings from ('1 Drawings' or '0 Sketches') and what Access table to delete records from (Drawings or Sketches)
                         subfolderstr= '1 Drawings'
                         tbl='Drawings'
-                    elif tableobj == self.SketchesTable:
-                        subfolderstr= '0 Sketches'
-                        tbl='Sketches'
+                elif tableobj == self.SketchesTable:
+                    subfolderstr= '0 Sketches'
+                    tbl='Sketches'
+                qm= QMessageBox() #Message box to confirm deletion
+                ret = qm.question(self,'Delete selected item(s)', f"Are you sure you want to delete these {len(selectionindexes)} {tbl.lower()}(s)?", qm.Yes | qm.No)
+                if ret == qm.Yes:
+                    
                     con_string = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ='+Project_Database+';' #Connect with the access database
                     conn = pyodbc_connect(con_string)
                     cursor =conn.cursor()            
@@ -7672,11 +7794,6 @@ class DrawingsandSketchesWindow(QMainWindow):
 
     def selection_changed(self):
         try:
-            # Only enable the copy button if there's items selected in only one table( Drawings table or Sketches table)
-            if (len(self.DrawingsTable.selectedItems())>0 and len(self.SketchesTable.selectedItems()) ==0) or(len(self.SketchesTable.selectedItems())>0 and len(self.DrawingsTable.selectedItems()) ==0):
-                self.CopytoButton.setEnabled(True)
-            else:
-                self.CopytoButton.setEnabled(False)
             # Disable Issue Docs button if no item is selected
             if len(self.DrawingsTable.selectedItems())>0 or len(self.SketchesTable.selectedItems())>0:
                 
@@ -7759,10 +7876,16 @@ class DrawingsandSketchesWindow(QMainWindow):
         try:
             global servicetype, servicenodict
             #Check if selected drawings are sketches or drawings
-            if len(self.DrawingsTable.selectedItems())>0:
-                self.tableSelected =self.DrawingsTable
-            elif len(self.SketchesTable.selectedItems()) >0:
-                self.tableSelected=self.SketchesTable
+            # if len(self.DrawingsTable.selectedItems())>0:
+            #     self.tableSelected =self.DrawingsTable
+            # elif len(self.SketchesTable.selectedItems()) >0:
+            #     self.tableSelected=self.SketchesTable
+            if self.DrawingsTable.hasFocus():
+                self.tableSelected = self.DrawingsTable
+            elif self.SketchesTable.hasFocus():
+                self.tableSelected = self.SketchesTable
+            else:
+                return
             selectionindexes = [i.row() for i in self.tableSelected.selectionModel().selectedRows(0) ] #Make a list of drawings selected
             # selectionindexes = [i.row() for i in self.tableSelected.selectionModel().selectedRows(0) if self.tableSelected.isRowHidden(i.row())==False] #Make a list of drawings selected and are not hidden
             # self.tableSelected.clearSelection() # Clear all selections
@@ -8705,7 +8828,7 @@ class ConfirmCopyDrawing(QDialog):
             self.resize(800, 600)
             self.vbox=QVBoxLayout()
             #Create a table for the drawings
-            self.drawingcopies_Table=QTableWidget(1,3)
+            self.drawingcopies_Table=TableWidget(1,3)
             self.drawingcopies_Table.setRowCount(self.listWidget.count())
             self.drawingcopies_Table.setHorizontalHeaderLabels(["Drawing Name","","XREF to use"])
             for item in range(self.listWidget.count()):#populate the table with the drawings from the copy dialog
@@ -9044,9 +9167,9 @@ class ReportsPresMemosWindow(QMainWindow):
             # currentProjectLabel.setGeometry(QRect(450, 70, 290,40))
 
           #Tables
-            self.ReportsTable = QTableWidget(1,2)
-            self.PresentationsTable = QTableWidget(1, 2)
-            self.MemosTable = QTableWidget(1, 2)
+            self.ReportsTable = TableWidget(1,2)
+            self.PresentationsTable = TableWidget(1, 2)
+            self.MemosTable = TableWidget(1, 2)
             self.ReportsTable.setHorizontalHeaderLabels(["Reference","Title"])
             self.PresentationsTable.setHorizontalHeaderLabels(["Reference","Title"])
             self.MemosTable.setHorizontalHeaderLabels(["Reference","Title"])
@@ -9199,6 +9322,7 @@ class ReportsPresMemosWindow(QMainWindow):
                 selectedrows = [i.row() for i in source.selectionModel().selectedRows(0) if (source.isRowHidden(i.row())==False)]
                 if len(selectedrows)>0:
                     menu = QMenu(self)
+                    menu.addActions(source.defaultActions)
                     menu.addAction("Open", lambda: self.openfile(source))
                     if len(selectedrows)==1 and source==self.ReportsTable:   menu.addAction("Rename", lambda: self.renamefile(source))
                     menu.addAction("Delete", lambda: self.delete(source))
@@ -9330,7 +9454,6 @@ class ReportsPresMemosWindow(QMainWindow):
                     row=selectedrows[0]
                     #allow user to edit the cell
                     #dynamically allow user to edit the cell
-                    # tableobj.setEditTriggers(QAbstractItemView.AllEditTriggers)
                     self.previousReportName=tableobj.item(row,1).text()
                     tableobj.editItem(tableobj.item(row,1))
 
@@ -9533,6 +9656,9 @@ class NewReport_Dialog(QDialog):
 
     def funcOK(self):
         try:
+            if this_userdata is None: 
+                MsgBox("Please login to continue", setWindowTitle="Login required", setIcon = QMessageBox.Critical)
+                return
             if self.ReportTitleEdit.text()!= "":#If the title box isn't empty
                 if path.exists(Project_Database):
                   #Add the new report into the project database if it is found and if the report folder for this project is found
@@ -9625,17 +9751,43 @@ class NewReport_Dialog(QDialog):
                                                 MsgBox("The image file for the logo is not supported\nEither invalid format or size of the image is too big, try compressing this image",setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
                                     #tables
-                                    for table in doc.tables:
-                                        for row in table.rows:
-                                            for cell in row.cells:  
-                                                if cell.text=="Project Title":
-                                                    row.cells[1].text=ThisProject_name
-                                                elif cell.text=="Project Number":
-                                                    row.cells[1].text=ThisProject_no
-                                                elif cell.text=="Report Title":
-                                                    row.cells[1].text=self.ReportTitleEdit.text()
-                                                elif cell.text=="Report Reference":
-                                                    row.cells[1].text=self.prename
+                                    if self.ReportTemp==SiteVisitReportTemp:
+                                        font=doc.styles['Normal'].font
+                                        font.name='Lato'
+                                        replacements= {
+                                            'Project Name:' : f'Project Name: {ThisProject_name}',
+                                            'Author:' : f'Author: {this_userdata["initial"]}',
+                                            'Project Number:' : f'Project Number: {ThisProject_no}',
+                                            'Date:' : f'Date: {str(date.today().strftime("%d/%m/%y"))}',
+                                            'Report No:' : f'Report No: {self.prename}',
+                                        }
+                                        for table in doc.tables:
+                                            for row in table.rows:
+                                                for cell in row.cells:  
+                                                    if cell.text in replacements:
+                                                        key=cell.text
+                                                        cell.text=replacements[cell.text]
+                                                        replacements.pop(key)
+                                                    if not replacements:
+                                                        break
+                                                else:
+                                                    continue
+                                                break
+                                            else:
+                                                continue
+                                            break
+                                    else:
+                                        for table in doc.tables:
+                                            for row in table.rows:
+                                                for cell in row.cells:  
+                                                    if cell.text=="Project Title":
+                                                        row.cells[1].text=ThisProject_name
+                                                    elif cell.text=="Project Number":
+                                                        row.cells[1].text=ThisProject_no
+                                                    elif cell.text=="Report Title":
+                                                        row.cells[1].text=self.ReportTitleEdit.text()
+                                                    elif cell.text=="Report Reference":
+                                                        row.cells[1].text=self.prename
                                     #footer
                                     # for foot in range(0, len(doc.sections)):
                                     #     #In the footers replace all texts 'Report name' with the report name set
@@ -10099,7 +10251,7 @@ class SpecsWindow(QMainWindow):
             # currentProjectLabel.setGeometry(QRect(450, 70, 290,40))
 
           #Specs Table
-            self.SpecsTable = QTableWidget(1,3)
+            self.SpecsTable = TableWidget(1,3)
             # self.SpecsTable.setGeometry(QRect(10, 160, 620, 751))
             #Drawings Table Headear
             self.SpecsTable.setHorizontalHeaderLabels(["","Reference", "Title"])
@@ -10107,7 +10259,7 @@ class SpecsWindow(QMainWindow):
             self.Specs_search.setPlaceholderText("Search")
            
           #Schedules Table
-            self.SchedulesTable = QTableWidget(1,3)
+            self.SchedulesTable = TableWidget(1,3)
             self.SchedulesTable.setHorizontalHeaderLabels(["","Reference", "Title"])
             #Inform user the table is not working yet
             # self.SchedulesTable.setItem(0,0,QTableWidgetItem("This table is not working yet"))
@@ -10278,6 +10430,7 @@ class SpecsWindow(QMainWindow):
             if event.type() == QEvent.ContextMenu and source in [self.SpecsTable, self.SchedulesTable]:
                 if len(source.selectionModel().selectedRows())>0:
                     menu = QMenu(self)
+                    menu.addActions(source.defaultActions)
                     menu.addAction("Open", lambda: self.openfile(source))
                     menu.addAction("Delete", lambda: self.delete(source))
                     menu.exec_(event.globalPos())
@@ -10925,7 +11078,7 @@ class NewSchedules_Dialog(QDialog):
             #Check if any type is selected
             checked_types= [{'Schedule':schname,'Checkbox':schvalue['Checkbox'],'Type':schvalue['Type'],'ServiceNo':service['ServiceNo']} for service in self.schedulesData.values() for schname,schvalue in service["Schedules"].items() if schvalue["Checkbox"].isChecked()]
             if checked_types!=[]:
-                self.schedulesTable= QTableWidget(1,1)
+                self.schedulesTable= TableWidget(1,1)
                 self.schedulesTable.setRowCount(len(checked_types))
                 self.schedulesTable.setHorizontalHeaderLabels(["Schedules"])
                 row=0
@@ -11256,7 +11409,7 @@ class FeeJotterWidget(QWidget):
             self.EditButton=QPushButton("Edit")
             self.EditButton.setMaximumWidth(150)
 
-            self.staffResourceTable = QTableWidget(1,1)
+            self.staffResourceTable = TableWidget(1,1)
             self.columnLabels=["Member Intial","Task","Staff Resource"]
             self.staffResourceTable.setColumnCount(len(self.columnLabels))
 
@@ -11289,7 +11442,7 @@ class FeeJotterWidget(QWidget):
           #Project Label
             currentProjectLabel= QLabel("Fee Jotter:    " +ThisProject_foldername)
             currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
-            # self.FeesTable = QTableWidget(1,1)
+            # self.FeesTable = TableWidget(1,1)
 
             OptionsLayout=QHBoxLayout()
             OptionsLayout.addStretch(5)
@@ -11376,7 +11529,7 @@ class FeeProposalWidget(QWidget):
           #Project Label
             currentProjectLabel= QLabel(ThisProject_foldername)
             currentProjectLabel.setFont(QFont("Gill Sans MT", 12))
-            self.FeeProposalsTable = QTableWidget(1,1)
+            self.FeeProposalsTable = TableWidget(1,1)
 
           #Fees Table
             self.refreshTable()
@@ -11495,6 +11648,7 @@ class FeeProposalWidget(QWidget):
             if event.type() == QEvent.ContextMenu and source ==self.FeeProposalsTable:
                 if len(source.selectionModel().selectedRows())>0:
                     menu = QMenu(self)
+                    menu.addActions(source.defaultActions)
                     menu.addAction("Delete",lambda: self.delete(source))
                     menu.addAction("Open",lambda: self.openfile(source))
                     menu.exec_(event.globalPos())
@@ -12398,7 +12552,7 @@ class CalculationsWindow(QMainWindow):
                 #         self.openfile(self.CalcTable)#fold stages
 
             else:
-                self.CalcTable=QTableWidget(1,1)
+                self.CalcTable=TableWidget(1,1)
 
                 if path.exists(ProjectCalcsFolder):
                     self.CalcTable.setItem(0, 0, QTableWidgetItem("No PROJECT ADMIN DATABASE found"))
@@ -12477,7 +12631,6 @@ class CalculationsWindow(QMainWindow):
             #if you right click Delete and Open
             if event.type() == QEvent.ContextMenu and source in [self.CalcTable]:
                 menu = QMenu()
-
                 selectedRows= [i.row() for i in source.selectionModel().selectedRows(0)]
                 if len(selectedRows)>0 :
                     if all(source.item(i,source.columnLabels.index('Type')).text()=='File' for i in selectedRows):
@@ -12510,7 +12663,6 @@ class CalculationsWindow(QMainWindow):
                             break # Show calcs as long as the full criteria(in the if statement) is met by any column in the row and then move to next row
         except :
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
-
 
     def delete(self, tableobj):
         try:
@@ -13040,7 +13192,7 @@ class IssuesWindow(QMainWindow):
         #     self.IssueFolderButton.clicked.connect(self.IssueFolderClicked)#Connecting the button to its function when clicked
 
           #Issues Folder Table
-            self.IssuesFolderTable=QTableWidget(1,1)
+            self.IssuesFolderTable=TableWidget(1,1)
             self.IssuesFolderTable.setHorizontalHeaderLabels(["Issue Folders"])
             self.IssuesFolder_search=QLineEdit()
             self.IssuesFolder_search.setPlaceholderText("Search")
@@ -13048,7 +13200,7 @@ class IssuesWindow(QMainWindow):
             QShortcut(QKeySequence('Delete'),self).activated.connect(self.deleteFolder)
 
           #Drawings Table
-            self.DrawingsTable=QTableWidget(1,1)
+            self.DrawingsTable=TableWidget(1,1)
             self.DrawingsTable.setHorizontalHeaderLabels(["Drawings in selected folder (.pdf)"])
             self.Drawings_search=QLineEdit()
             self.Drawings_search.setPlaceholderText("Search")
@@ -13160,6 +13312,7 @@ class IssuesWindow(QMainWindow):
 
                 if len(source.selectionModel().selectedRows())>0:
                     menu = QMenu()
+                    menu.addActions(source.defaultActions)
                     if source==self.DrawingsTable:
                         menu.addAction("Open", self.openDrawings)
                         menu.addAction("Delete", self.deleteDrawings)
@@ -13412,11 +13565,11 @@ class NewIssue_Dialog(QDialog):
             self.setWindowTitle('New Issue Folder')
 
           #Drawings Table
-            self.DrawingsTable = QTableWidget(1,2)
+            self.DrawingsTable = TableWidget(1,2)
             self.DrawingsTable.setHorizontalHeaderLabels(["","Drawings"])
 
           #Sketches Table
-            self.SketchesTable = QTableWidget(1,2)
+            self.SketchesTable = TableWidget(1,2)
             self.SketchesTable.setHorizontalHeaderLabels(["","Sketches"])
 
           #Get drawings and sketches
@@ -14178,7 +14331,7 @@ class ProjectResourceWindow(QMainWindow):
             # self.rscManager=ResourceManager(include_toolbuttons=True, include_period=False,include_resourcegeneraltable=False, include_chart=False, refreshResources=self.refreshResourceWindow, project=f"{ThisProject_no} - {ThisProject_name}")
             
             # self.periodAllRadioButton.click()
-            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(oncomplete=self.refreshResourceWindow, includeNewResourceButton=True, includeEditResourceButton=True)
+            self.resourceWeeklyBreakdownTable=ResourceWeeklyBreakdownTable(oncomplete=self.refreshResourceWindow, includeNewResourceButton=True)
             
             projectresources= Resources_df[Resources_df['ProjectNo']==ThisProject_no]
             minweek, maxweek, _ = getResourceMinMaxWeeks(projectresources)
@@ -14206,12 +14359,12 @@ class ProjectResourceWindow(QMainWindow):
             self.OptionsLayout.addWidget(self.resourceWeeklyBreakdownTable.NewResourceButton)
             self.OptionsLayout.addStretch(1)
             vbox=QVBoxLayout()
-            vbox.addWidget(self.resourceWeeklyBreakdownTable.EditResourceButton)
+            vbox.addWidget(self.resourceWeeklyBreakdownTable.SaveResourceButton)
             vbox.addWidget(self.resourceWeeklyBreakdownTable.CancelEditButton)
             self.OptionsLayout.addLayout(vbox)
             self.OptionsLayout.addStretch(1)
             # vbox.addStretch(1)
-            # self.OptionsLayout.addWidget(self.resourceWeeklyBreakdownTable.EditResourceButton)
+            # self.OptionsLayout.addWidget(self.resourceWeeklyBreakdownTable.SaveResourceButton)
             # self.OptionsLayout.addStretch(1)
             # self.OptionsLayout.addWidget(self.resourceWeeklyBreakdownTable.CancelEditButton)
             self.OptionsLayout.addWidget(self.AutoCompletefromBidButton)
@@ -14496,17 +14649,6 @@ class ToolButton(QToolButton):
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
 
-class QTableWidget(QTableWidget):
-    def __init__(self, rows, columns):
-        super().__init__(rows, columns)
-        self.setRowCount(rows)
-        self.setColumnCount(columns)
-        # self.setFocusPolicy(Qt.NoFocus) #This is to avoid the blue border when the table is clicked
-        self.setStyleSheet("QTableWidget::item:selected{background-color:rgba(208,236,252,0.5); color:rgba(0,0,0,0.8); border-bottom: 1px solid #eeeeee;}")
-        self.setEditTriggers(QAbstractItemView.NoEditTriggers)
-
-        self.columnLabels = []
-
 class CheckableComboBox(QComboBox):
     def __init__(self, objectName):
         try:
@@ -14636,7 +14778,7 @@ class CheckableComboBox(QComboBox):
             if self.objectName()=="Projects Filter":
                 #call the status filter function
                 if self.parent() and self.parent().__class__.__name__=="ProjectsWidget":
-                    self.parent().projectStatusChanged(self.checkedTexts)
+                    self.parent().filter_projectStatus(self.checkedTexts)
         except:
             MsgBox(str(format_exc())+"\n\n Contact software programmer", setWindowTitle="Error", setIcon = QMessageBox.Critical)
     def findText(self, text):
@@ -15277,7 +15419,7 @@ if __name__ == "__main__":
             # print("Initwindow ended", time.time()-start_time)
             # start_time= time.time() 
             widget.addWidget(initwindow)
-            # # initwindow.Page.setCurrentIndex(1)
+            # initwindow.Page.setCurrentIndex(1)
             # initwindow.resourceWidget.timesheetClicked()
 
             # initwindow.resourceWidget.rscManager.usersFilterBox.setCurrentText("All users")
@@ -15287,7 +15429,7 @@ if __name__ == "__main__":
             #     # activeProjectrow=88 #Paxton House
             
             # # # toremove (added for test)
-            # #    ##drawing page 
+            # # #    ##drawing page 
             # activeProjectrow=43
             # projectmenuwindow=ProjectMenuWindow()
             # widget.addWidget(projectmenuwindow)
@@ -15301,7 +15443,7 @@ if __name__ == "__main__":
             # reportswindow=ReportsPresMemosWindow()
             # widget.addWidget(reportswindow)
             # widget.setCurrentWidget(reportswindow)
-            # widget.showMaximized() 
+            # # widget.showMaximized() 
             # newreportdialog=NewReport_Dialog()
             # newreportdialog.show()
 
