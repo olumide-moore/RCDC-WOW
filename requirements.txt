@@ -1,7 +1,7 @@
 altgraph==0.17.3
-bcrypt @ file:///C:/Windows/Temp/abs_36kl66t_aw/croots/recipe/bcrypt_1659554334050/work
-certifi @ file:///C:/b/abs_85o_6fm0se/croot/certifi_1671487778835/work/certifi
-cffi @ file:///C:/b/abs_49n3v2hyhr/croot/cffi_1670423218144/work
+bcrypt
+certifi
+cffi
 contourpy==1.0.7
 convertdate==2.4.0
 cycler==0.11.0
@@ -17,35 +17,38 @@ korean-lunar-calendar==0.3.1
 lxml==4.9.1
 matplotlib==3.7.1
 numpy==1.24.2
-openpyxl @ file:///tmp/build/80754af9/openpyxl_1632777717936/work
-packaging @ file:///tmp/build/80754af9/packaging_1637314298585/work
+openpyxl
+packaging
 pandas==2.0.0
 pefile==2022.5.30
 Pillow==9.4.0
 ply==3.11
-pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
+pycparser
 pydantic==1.10.2
 pyinstaller==5.7.0
 pyinstaller-hooks-contrib==2022.14
 PyMeeus==0.5.12
 PyMuPDF==1.19.0
-pyodbc @ file:///C:/Windows/Temp/abs_61e3jz3u05/croots/recipe/pyodbc_1659513801402/work
-pyparsing @ file:///C:/Users/BUILDE~1/AppData/Local/Temp/abs_7f_7lba6rl/croots/recipe/pyparsing_1661452540662/work
+pyodbc
+pyparsing
 PyPDF2==3.0.1
 PyQt5==5.15.7
-PyQt5-sip @ file:///C:/Windows/Temp/abs_d7gmd2jg8i/croots/recipe/pyqt-split_1659273064801/work/pyqt_sip
+PyQt5-sip
 PyQt5-stubs==5.15.6.0
 python-dateutil==2.8.2
 python-docx==0.8.11
+python-pptx==0.6.23
 pytz==2023.3
 pywin32==305
 pywin32-ctypes==0.2.0
 reportlab==3.6.12
-sip @ file:///C:/Windows/Temp/abs_b8fxd17m2u/croots/recipe/sip_1659012372737/work
-six @ file:///tmp/build/80754af9/six_1644875935023/work
+sip
+six
 tenacity==8.2.2
-toml @ file:///tmp/build/80754af9/toml_1616166611790/work
+toml
 typing_extensions==4.4.0
 tzdata==2023.3
 wincertstore==0.2
+XlsxWriter==3.2.0
+xlwings==0.31.10
 zipp==3.15.0
